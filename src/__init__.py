@@ -8,12 +8,12 @@ from contextlib import asynccontextmanager
 async def life_span(app: FastAPI):
     print("server is starting....")
     try:
-        await init_db()
+        # await init_db()
         print("Database Initialization complete.")
     except Exception as e:
         print(f"Error Initalizing database: {e}")
     yield
     print("Server has been stopped....")
 
-app = FastAPI(lifespan=life_span)
+app = FastAPI()
 
