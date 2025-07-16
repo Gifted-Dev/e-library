@@ -3,28 +3,28 @@ from sqlalchemy import ForeignKey, String
 from datetime import datetime
 from typing import List, Optional
 # from src.db.main import Base
-import sqlalchemy.dialects.sqlite as sq
+import sqlalchemy.dialects.postgresql as pg
 import uuid 
 
 class User(SQLModel, table=True):
     __tablename__ = "users"
     
-    uid: str = Field(
-        default_factory=lambda: uuid.uuid4().hex,
+    uid: uuid.UUID = Field(
         sa_column=Column(
-            String(32),
+            pg.UUID,
             primary_key=True,
-            # default=lambda: uuid.uuid4().hex
+            nullable=False,
+            default=uuid.uuid4
         )
     )
     
-    username: str
-    firstname: str = Field(nullable=True)
-    Lastname: str = Field(nullable=True)
+    username: Optional[str] = Field(default=None)
+    first_name: str = Field(nullable=True)
+    last_name: str = Field(nullable=True)
     
     role: str = Field(
         sa_column=Column(
-            sq.VARCHAR, 
+            pg.VARCHAR, 
             nullable=False, 
             server_default="user")
     )
@@ -33,39 +33,80 @@ class User(SQLModel, table=True):
     email: str
     password_hash: str
     created_at: datetime = Field(sa_column=Column(
-        sq.TIMESTAMP,
+        pg.TIMESTAMP,
         default=datetime.now
     ))
     
-    books: Optional["Book"] = Relationship(
-        back_populates="users"
-    )
     
 class Book(SQLModel, table=True):
     __tablename__ = "books"
     
-    uid: str = Field(
-        default_factory=lambda: uuid.uuid4().hex,
+    uid: uuid.UUID = Field(
         sa_column=Column(
-            String(32),
+            pg.UUID,
             primary_key=True,
-            # default=lambda: uuid.uuid4().hex
+            nullable=False,
+            default=uuid.uuid4
         )
     )
     
-    title: str
-    author: str
-    file_url: str
-    file_size: float
+    title: str = Field(nullable=False)
+    author: str = Field(nullable=False)
+    description: str = Field(nullable=False)
+    file_url: str  = Field(nullable=False)
+    file_size: float  = Field(nullable=False)
     cover_image: Optional[str] = None
+    uploaded_by: Optional[uuid.UUID] = Field(default=None, foreign_key="users.uid")
     upload_date: datetime = Field(
         sa_column=Column(
-            sq.TIMESTAMP,
+            pg.TIMESTAMP(timezone=True),
+            default=datetime.now,
+        )
+    )
+    
+    
+
+
+# creating downloads table to track user downloads
+class Downloads(SQLModel, table=True):
+    __tablename__ = "downloads"
+    
+    uid: uuid.UUID = Field(
+        sa_column=Column(
+            pg.UUID,
+            primary_key=True,
+            nullable=False,
+            default=uuid.uuid4
+        )
+    )
+    
+    user_id: Optional[uuid.UUID] = Field(
+        sa_column=Column(
+            ForeignKey("users.uid"),
+            default=None,
+            nullable=True
+        )
+    )
+    
+    book_id: Optional[uuid.UUID] = Field(
+        sa_column=Column(
+            ForeignKey("books.uid"),
+            default=None,
+            nullable=True
+        )
+    )
+    
+    timestamp: datetime = Field(
+        sa_column=Column(
+            pg.TIMESTAMP(timezone=True),
             default=datetime.now
         )
     )
     
-    users: Optional["Book"] = Relationship(
-        back_populates="books",
-        sa_relationship_kwargs={"lazy": "selectin"}
+    was_emailed: Optional[bool] = Field(
+        sa_column=Column(
+            pg.BOOLEAN,
+            nullable=False,
+            server_default="false"
+        )
     )

@@ -3,7 +3,9 @@ uvicorn
 sqlalchemy[asyncio]
 jinja2
 python-jose[cryptography]
-passlib[bcrypt] 
+pyJWT[crypto]
+passlib[bcrypt]
+bcrypt<4
 python-dotenv
 sqlmodel
 aiosqlite
@@ -11,3 +13,4 @@ pydantic-settings
 alembic 
 asyncpg 
 psycopg2-binary
+

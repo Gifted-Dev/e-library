@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from src.config import Config
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm import sessionmaker
-from src.db.models import *
+# from src.db.models import *
 
 #|---- Creating Async Engine ---|
 """ This creates an engine that helps with database connection"""

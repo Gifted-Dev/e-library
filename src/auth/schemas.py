@@ -6,11 +6,11 @@ import uuid
 
 # |---- Schemas to Read User data ----|
 class UserModel(BaseModel):
-    uid: str
-    username: str
+    uid: uuid.UUID
+    # username: str  |--- Reserved for Future Use ---|
     first_name: str
     last_name: str
-    is_verified: str
+    is_verified: bool
     email: str
     password_hash: str
     created_at: datetime
@@ -21,7 +21,7 @@ class UserModel(BaseModel):
 # |---- Schemas Required to create User ----|
 class UserCreateModel(BaseModel):
     email: str
-    username: str = Field(max_length=13)
+    # username: str = Field(max_length=13) |--- Reserved for Future Use ---|
     password: str = Field(min_length=8)
     first_name : str 
     last_name: str

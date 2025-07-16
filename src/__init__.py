@@ -3,6 +3,7 @@ from src.db import models
 from src.db.models import Book, User
 from src.db.main import init_db
 from contextlib import asynccontextmanager
+from src.auth.routes import auth_router
 
 @asynccontextmanager
 async def life_span(app: FastAPI):
@@ -15,5 +16,9 @@ async def life_span(app: FastAPI):
     yield
     print("Server has been stopped....")
 
+version = "v1"
+
 app = FastAPI()
 
+
+app.include_router(auth_router, prefix="/api/{version}/auth", tags=['auth'])
