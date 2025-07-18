@@ -13,4 +13,6 @@ pydantic-settings
 alembic 
 asyncpg 
 psycopg2-binary
+boto3
+
 

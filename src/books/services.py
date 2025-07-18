@@ -8,17 +8,16 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
+
+
+    
+
 class BookService:
-    async def save_book(self, book_data: BookCreateModel,
-                        file_url: str,
-                        file_size: float,
-                        uploaded_by: UUID,
-                        session:AsyncSession):
-        
-        # |--- statement to confirm if book has been previously uploaded ---|
+    
+    async def confirm_book_exists(self, book_data, session:AsyncSession):
         statement = select(Book).where(Book.title == book_data.title,
-                                         Book.author == book_data.author)
-        
+                                            Book.author == book_data.author)
+            
         result = await session.exec(statement) # Execute the statement
         book_exists = result.first() # Result if book exist or not
         
@@ -28,6 +27,16 @@ class BookService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Book already exists"
             )
+        
+        
+    async def save_book(self, book_data: BookCreateModel,
+                        file_url: str,
+                        file_size: float,
+                        uploaded_by: UUID,
+                        session:AsyncSession):
+        
+        # |--- statement to confirm if book has been previously uploaded ---|
+        await self.confirm_book_exists(book_data, session)
         
         # |--- If book does not exist, save book ---|
         new_book_dict = book_data.model_dump()
