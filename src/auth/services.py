@@ -21,6 +21,12 @@ class UserService:
         
         user = result.first()
         
+        if not user:
+            raise HTTPException(    
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User does not exist, signup to login"
+        )
+        
         return user
     
     
@@ -52,12 +58,6 @@ class UserService:
         email = login_data.email # get the user email
         user_password = login_data.password # get the user password
         user_exists = await self.get_user_by_email(email, session)
-        
-        if not user_exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User does not exist, signup to login"
-            )
             
         
         # if user exists, verify password

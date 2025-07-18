@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
+from src.config import Config
 from src.auth.dependencies import (
     AccessTokenBearer,
     RefreshTokenBearer,
@@ -26,11 +27,14 @@ from datetime import datetime
 
 auth_router = APIRouter()
 user_service = UserService()
-role_checker = RoleChecker(['user', 'admin'])
+role_checker = RoleChecker(['user', 'admin', 'superadmin'])
 
 @auth_router.post("/signup", response_model= UserModel, status_code=status.HTTP_201_CREATED)
-async def create_user(user_data: UserCreateModel, session:AsyncSession = Depends(get_session)):
-    """Check if user exists before creating user"""
+
+
+async def register_user(user_data: UserCreateModel, session:AsyncSession = Depends(get_session)):
+    
+    # |---- Check if user exists before creating user ----|
     
     # get user email
     email = user_data.email
@@ -49,6 +53,13 @@ async def create_user(user_data: UserCreateModel, session:AsyncSession = Depends
     #create the user
     new_user = await user_service.create_user(user_data, session)
     
+    # |---- Check if email is a superadmin ----|
+    superadmin_emails = Config.SUPERADMIN_EMAILS
+    
+    # |---- Assign superadmin role to user ----|
+    if email in superadmin_emails:
+        new_user.role = "superadmin"
+        await session.commit()
     
     # return the user
     return new_user

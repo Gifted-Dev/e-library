@@ -7,6 +7,7 @@ from src.db.models import Book
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
+import os
 
 
 
@@ -107,4 +108,23 @@ class BookService:
             )
             
         return books
-            
+    
+    async def delete_book(self, book_uid: str, session:AsyncSession):
+        # |---- select book by uid ----|
+        book = self.get_book(book_uid, session)
+        
+        # |---- Delete Book ----|
+        if book.file_url and os.path.exists(book.file_url): # Check if path exists
+            try:
+                os.remove(book.file_url) # Remove book from local storage
+            except Exception as e: # Raise exception error if failed to delete.
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to delete file:{e}"
+                )
+                
+        # |---- Commit Changes ----|
+        await session.delete(book)
+        await session.commit()
+        
+        return {"message" : "Book has been deleted successfully."}

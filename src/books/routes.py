@@ -13,8 +13,8 @@ import os
 
 
 book_router = APIRouter()
-role_checker = Depends(RoleChecker(['admin', 'user']))
-admin_checker = Depends(RoleChecker(['admin']))
+role_checker = Depends(RoleChecker(['admin', 'user', 'superadmin']))
+superadmin_checker = Depends(RoleChecker(['superadmin']))
 
 user_service = UserService()
 book_service = BookService()
@@ -25,11 +25,10 @@ def is_valid_extension(filename: str) -> bool:
     return os.path.splitext(filename)[1].lower() in ALLOWED_EXTENSIONS
 
 
-@book_router.post("/upload", dependencies=[admin_checker])
+@book_router.post("/upload", dependencies=[superadmin_checker])
 async def upload_file(title: str = Form(...),
                       author: str = Form(...),
                       description: str = Form(...),
-                      upload_date: datetime = Form(...),
                       session : AsyncSession = Depends(get_session),
                       token_details: dict = Depends(AccessTokenBearer()),
                       file: UploadFile = File(...)):
@@ -48,6 +47,10 @@ async def upload_file(title: str = Form(...),
     user_id = token_details.get('user')['user_uid']
     
     
+    # |---- Get Upload_date ---|
+    upload_date = datetime.now()
+    
+    
     # |--- Create Book data ---|
     book_data = BookCreateModel(title=title,
                                 author=author,
@@ -58,22 +61,6 @@ async def upload_file(title: str = Form(...),
     
     # |--- Check if file had been previously uploaded ---|
     await book_service.confirm_book_exists(book_data, session)
-    
-    
-    # # |--- Generate a unique ID for the file |
-    # unique_id = str(uuid.uuid4())
-    # file_name = f"{unique_id}_{file.filename}"
-    # file_dir = "src/static/books"
-    
-    # # |--- confirm if directory exists ---|
-    # os.makedirs(file_dir, exist_ok=True)
-    
-    # # |--- Build File Location ---|
-    # file_location = os.path.join("src/static/books", file_name)
-    
-    # content = await file.read() # read file content
-    # async with aiofiles.open(file_location, "wb") as f:
-    #     await f.write(content)
 
 
     # Save file using chosen backend
@@ -89,6 +76,5 @@ async def upload_file(title: str = Form(...),
     return {
         "message": f"{filename} has been saved",
         "book_title": book_data.title,
-        "uploaded_by" : token_details.get('user')['first_name'],
         "upload_date" : str(upload_date)
     }
