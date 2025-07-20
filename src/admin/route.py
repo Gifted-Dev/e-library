@@ -41,10 +41,10 @@ async def revoke_admin(email:str = Form(...), session: AsyncSession = Depends(ge
     
     
     # |--- Confirm is user is previous an admin user ----|
-    if ex_admin != "admin":
+    if ex_admin.role != "admin":
         raise HTTPException(
             status_code = status.HTTP_400_BAD_REQUEST,
-            detail = "User does not have admin acess"
+            detail = "User does not have admin access"
         )
     
     # |--- Remove admin access ---|
