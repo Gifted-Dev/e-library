@@ -125,9 +125,15 @@ class BookService:
         return {"message" : "Book has been deleted successfully."}
     
     async def create_download_record(self, book_uid: str, user_uid: str, session: AsyncSession):
-        # Add book_uid and user_uid into download table
-        new_download = Downloads(book_uid, user_uid)
+        # Convert string UIDs to UUID objects, as the database model expects.
+        book_id_uuid = UUID(book_uid)
+        user_id_uuid = UUID(user_uid)
+        
+        # Create a new download record using keyword arguments for clarity and safety.
+        new_download = Downloads(book_id=book_id_uuid, user_id=user_id_uuid)
         session.add(new_download)
         await session.commit()
+        # Refresh the object to get default values from the DB, like the timestamp.
+        await session.refresh(new_download)
         
         return new_download

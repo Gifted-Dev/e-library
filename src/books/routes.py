@@ -112,8 +112,10 @@ async def search_books(title: Optional[str] = None, author: Optional[str] = None
 
 
 # |---- Route to Download book ----|
-@book_router.get("/{book_uid}/download", dependencies=[role_checker])
-async def download_book(book_uid: str,
+@book_router.post("/{book_uid}/request-download",
+                    dependencies=[role_checker],
+                    status_code=status.HTTP_202_ACCEPTED)
+async def request_download_link(book_uid: str,
                         token_details: dict = Depends(AccessTokenBearer()),
                         session: AsyncSession = Depends(get_session)):
     
