@@ -3,11 +3,12 @@ from src.books.schemas import BookCreateModel
 from fastapi import status
 from fastapi.exceptions import HTTPException
 from sqlmodel import select, desc
-from src.db.models import Book
+from src.db.models import Book, Downloads
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
 import os
+import aiofiles
 
 
 
@@ -36,9 +37,6 @@ class BookService:
                         uploaded_by: UUID,
                         session:AsyncSession):
         
-        # |--- statement to confirm if book has been previously uploaded ---|
-        await self.confirm_book_exists(book_data, session)
-        
         # |--- If book does not exist, save book ---|
         new_book_dict = book_data.model_dump()
         new_book = Book(**new_book_dict)
@@ -54,9 +52,9 @@ class BookService:
         return new_book
         
     
-    async def get_all_books(self, session:AsyncSession):
+    async def get_all_books(self, skip, limit, session:AsyncSession):
         # |--- Run statement to get all books ---|
-        statement = select(Book).order_by(desc(Book.upload_date))
+        statement = select(Book).order_by(desc(Book.upload_date)).offset(skip).limit(limit)
         
         # |--- Excecute the statement and save in variable result ---|
         result = await session.exec(statement)
@@ -86,7 +84,7 @@ class BookService:
         
         return book
     
-    async def search_book(self, title: Optional[str], author: Optional[str], session:AsyncSession):
+    async def search_book(self, title: Optional[str], author: Optional[str], skip, limit, session:AsyncSession):
         # |--- Statement to check which the user search for ---|
         statement = select(Book)
         
@@ -95,28 +93,25 @@ class BookService:
         
         if author: # if user searches with the author name
             statement = statement.where(Book.author.ilike(f"%{author}%"))
+            
+        # Apply pagination
+        paginated_statement = statement.offset(skip).limit(limit)
         
-        result = await session.exec(statement) # Exceuct the statement
+        result = await session.exec(paginated_statement) # Exceuct the statement
         books = result.all() # save all result
         
-        
-        # |--- Raise Exception if no book is found ---|
-        if not books:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No book matched the search criteria."
-            )
-            
+        # If no books match, we return an empty list.
+        # This is more consistent and easier for the client to handle than a 404 error.
         return books
     
     async def delete_book(self, book_uid: str, session:AsyncSession):
         # |---- select book by uid ----|
-        book = self.get_book(book_uid, session)
+        book = await self.get_book(book_uid, session)
         
         # |---- Delete Book ----|
-        if book.file_url and os.path.exists(book.file_url): # Check if path exists
+        if book.file_url and await aiofiles.os.path.exists(book.file_url): # Check if path exists
             try:
-                os.remove(book.file_url) # Remove book from local storage
+                await aiofiles.os.remove(book.file_url) # Remove book from local storage
             except Exception as e: # Raise exception error if failed to delete.
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -128,3 +123,11 @@ class BookService:
         await session.commit()
         
         return {"message" : "Book has been deleted successfully."}
+    
+    async def create_download_record(self, book_uid: str, user_uid: str, session: AsyncSession):
+        # Add book_uid and user_uid into download table
+        new_download = Downloads(book_uid, user_uid)
+        session.add(new_download)
+        await session.commit()
+        
+        return new_download

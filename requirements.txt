@@ -14,5 +14,5 @@ alembic
 asyncpg 
 psycopg2-binary
 boto3
-
+aiofiles
 
