@@ -1,5 +1,5 @@
 from sqlmodel.ext.asyncio.session import AsyncSession
-from src.books.schemas import BookCreateModel
+from src.books.schemas import BookCreateModel, BookUpdateModel
 from fastapi import status
 from fastapi.exceptions import HTTPException
 from sqlmodel import select, desc
@@ -104,6 +104,26 @@ class BookService:
         # If no books match, we return an empty list.
         # This is more consistent and easier for the client to handle than a 404 error.
         return books
+    
+    
+    async def update_book(self, book_uid: str, book_data: BookUpdateModel, session:AsyncSession):
+        # |---- Get the book using the book_uid ---|
+        # `get_book` is an async function and must be awaited.
+        book = await self.get_book(book_uid, session)
+        
+        # Use model_dump to get a dictionary of the provided data, excluding unset fields.
+        # This ensures we only update the fields the user actually sent.
+        update_data = book_data.model_dump(exclude_unset=True)
+
+        for key, value in update_data.items():
+            setattr(book, key, value)
+        
+        session.add(book)
+        await session.commit()
+        await session.refresh(book)
+        
+        return book
+        
     
     async def delete_book(self, book_uid: str, session:AsyncSession):
         # |---- select book by uid ----|

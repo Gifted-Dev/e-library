@@ -10,19 +10,12 @@ class BookCreateModel(BaseModel):
     description : str
     upload_date: datetime
     uploaded_by: Optional[uuid.UUID]
-
-
-# A Model to read info from db
-class BookReadModel(BaseModel):
-    title: str
-    author: str
-    description: str
-    file_size : float
-    cover_image : Optional[str]
-    upload_date: datetime
-    uploaded_by: Optional[uuid.UUID]
-    file_url: Optional[str]    
     
+class BookUpdateModel(BaseModel):
+    title: Optional[str]
+    author: Optional[str]
+    description: Optional[str]
+
 # a response model for book search
 class BookSearchModel(BaseModel):
     uid: uuid.UUID

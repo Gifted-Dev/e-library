@@ -5,7 +5,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.auth.services import UserService
 from src.db.main import get_session
 from src.auth.utils import create_download_token, decode_token
-from src.books.schemas import BookCreateModel, BookSearchModel
+from src.books.schemas import BookCreateModel, BookSearchModel, BookUpdateModel
 from src.books.services import BookService
 from src.auth.dependencies import AccessTokenBearer, RoleChecker
 from src.core.storage import get_storage_service
@@ -191,6 +191,15 @@ async def download_book(token: str, session: AsyncSession = Depends(get_session)
         )
 
     return FileResponse(path=book.file_url, filename=book.title, media_type='application/octet-stream')
+
+
+# |------- Route to Update Book ----------|
+@book_router.patch("/{book_uid}/update", response_model=BookSearchModel, dependencies=[admin_checker])
+async def update_book(book_uid: str, book_data: BookUpdateModel, session: AsyncSession = Depends(get_session)):
+    # |---- Update Book Using the Book Service -----|
+    book = await book_service.update_book(book_uid, book_data, session)
+
+    return book
 
 # |---- Route to delete book ---|
 @book_router.delete("/delete-book", dependencies=[admin_checker])
