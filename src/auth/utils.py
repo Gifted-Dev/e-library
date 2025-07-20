@@ -34,6 +34,24 @@ def create_access_token(user_data: dict, expiry:timedelta = None, refresh=False)
     
     return token
 
+def create_download_token(user_data: dict, book_uid: str, expiry:timedelta = None, refresh=False) -> str:
+    payload = {
+        "user": user_data,
+        "book_uid": book_uid,
+        "exp": datetime.now() + (expiry if expiry is not None else timedelta(minutes=60)),
+        'jti': str(uuid.uuid4()),
+        "refresh": refresh
+    }
+     
+    token = jwt.encode(
+        payload=payload,
+        key = Config.JWT_SECRET,
+        algorithm=Config.JWT_ALGORITHM
+    )
+    
+    return token
+
+
 def decode_token(token:str) -> dict:
     try:
         token_data = jwt.decode(

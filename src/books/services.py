@@ -6,6 +6,7 @@ from sqlmodel import select, desc
 from src.db.models import Book, Downloads
 from datetime import datetime
 from typing import Optional
+from src.core.storage import get_storage_service
 from uuid import UUID
 import os
 import aiofiles
@@ -108,10 +109,12 @@ class BookService:
         # |---- select book by uid ----|
         book = await self.get_book(book_uid, session)
         
+        storage_service = get_storage_service()
         # |---- Delete Book ----|
-        if book.file_url and await aiofiles.os.path.exists(book.file_url): # Check if path exists
+        # Use the storage abstraction to check for file existence
+        if book.file_url and await storage_service.file_exists(book.file_url):
             try:
-                await aiofiles.os.remove(book.file_url) # Remove book from local storage
+                await storage_service.delete_file(book.file_url)
             except Exception as e: # Raise exception error if failed to delete.
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

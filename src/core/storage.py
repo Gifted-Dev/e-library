@@ -1,10 +1,14 @@
 import os
 import io
 import uuid
+from urllib.parse import urlparse
 from fastapi import UploadFile
-from dotenv import load_dotenv
+from src.config import Config
+import aiofiles
+import aioboto3
+from botocore.exceptions import ClientError
 
-load_dotenv()
+
 
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")
 
@@ -21,33 +25,88 @@ class LocalStorageService:
         content = await file.read()
         file_size = len(content) / (1024 * 1024)
 
-        with open(path, "wb") as f:
-            f.write(content)
+        async with aiofiles.open(path, "wb") as f:
+            await f.write(content)
 
         return filename, path, file_size
+
+    async def file_exists(self, file_path: str) -> bool:
+        # aiofiles.os.path.exists directly returns True or False. No try/except needed.
+        return await aiofiles.os.path.exists(file_path)
+    
+    async def delete_file(self, file_url: str):
+        await aiofiles.os.remove(file_url)
 
 
 class S3StorageService:
     async def save_file(self, file: UploadFile, folder="books"):
-        import boto3
-
-        s3 = boto3.client(
+        session = aioboto3.Session()
+        
+        
+        async with session.client(
             "s3",
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-            region_name=os.getenv("AWS_REGION")
-        )
+            aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
+            region_name=Config.AWS_REGION
+        ) as s3:
 
-        file_id = str(uuid.uuid4())
-        key = f"{folder}/{file_id}_{file.filename}"
-        content = await file.read()
-        file_size = len(content) / (1024 * 1024)
+            file_id = str(uuid.uuid4())
+            key = f"{folder}/{file_id}_{file.filename}"
+            content = await file.read()
+            file_size = len(content) / (1024 * 1024)
 
 
-        s3.upload_fileobj(io.BytesIO(content), os.getenv("AWS_BUCKET_NAME"), key)
+            # await s3.upload_fileobj(io.BytesIO(content), os.getenv("AWS_BUCKET_NAME"), key) not more in use
+               
+            await s3.put_object(
+                Body=content,
+                Bucket=Config.AWS_BUCKET_NAME,
+                Key=key,
+                ContentType=file.content_type
+            )
 
-        file_url = f"https://{os.getenv('AWS_BUCKET_NAME')}.s3.amazonaws.com/{key}"
-        return key, file_url, file_size
+            file_url = f"https://{Config.AWS_BUCKET_NAME}.s3.amazonaws.com/{key}"
+            return key, file_url, file_size
+
+    async def file_exists(self, file_url: str) -> bool:
+        session = aioboto3.Session()
+        bucket_name = Config.AWS_BUCKET_NAME
+        
+        # Reliably extract the object key (e.g., "books/file.pdf") from the full URL.
+        parsed_url = urlparse(file_url)
+        key = parsed_url.path.lstrip('/')
+
+        async with session.client("s3",
+                                  aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
+                                  aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
+                                  region_name=Config.AWS_REGION) as s3:
+            try:
+                # head_object is a lightweight way to check for existence.
+                await s3.head_object(Bucket=bucket_name, Key=key)
+                return True
+            except ClientError as e:
+                # If the specific error code is 404, we know the file doesn't exist.
+                if e.response['Error']['Code'] == '404':
+                    return False
+                # For any other client error (e.g., permissions), we re-raise the exception.
+                raise
+            
+    async def delete_file(self, file_url: str):
+        session = aioboto3.Session()
+        bucket_name = Config.AWS_BUCKET_NAME
+        
+        # Reliably extract the object key (e.g., "books/file.pdf") from the full URL.
+        parsed_url = urlparse(file_url)
+        key = parsed_url.path.lstrip('/')
+        
+        
+        
+        async with session.client("s3",
+                                  aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
+                                  aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
+                                  region_name=Config.AWS_REGION) as s3:
+            
+            await s3.delete_object(Bucket=bucket_name, Key=key)
 
 
 # 👇 Choose the right storage handler dynamically
