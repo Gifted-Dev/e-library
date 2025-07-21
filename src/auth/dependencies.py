@@ -44,7 +44,7 @@ class RefreshTokenBearer(TokenBearer):
 
 
 async def get_current_user(
-    token_data: dict = Depends(TokenBearer()),
+    token_data: dict = Depends(AccessTokenBearer()),
     session: AsyncSession = Depends(get_session)
 ):
     email = token_data["user"]["email"]

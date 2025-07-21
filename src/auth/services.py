@@ -1,5 +1,5 @@
 from src.db.models import User
-from src.auth.schemas import UserCreateModel, UserLoginModel
+from src.auth.schemas import UserCreateModel, UserLoginModel, UserUpdateModel
 from src.auth.utils import (
     generate_password_hash, 
     verify_password,
@@ -110,3 +110,19 @@ class UserService:
             )
             
         return user
+    
+    # |---- Model to allow User update their Profile ----|
+    async def update_user(self, user_to_update: User, update_data: UserUpdateModel, session: AsyncSession):
+        # The user object is passed directly from the route, no need to fetch it again.
+
+        # Convert data to dict
+        update_dict = update_data.model_dump(exclude_unset=True)
+        
+        for key, value in update_dict.items():
+            setattr(user_to_update, key, value)
+        
+        session.add(user_to_update)
+        await session.commit()
+        await session.refresh(user_to_update)
+        
+        return user_to_update

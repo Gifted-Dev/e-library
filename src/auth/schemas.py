@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 import uuid
 
 # This is the public-facing schema for a user. It safely exposes only non-sensitive data.
@@ -28,5 +28,8 @@ class UserLoginModel(BaseModel):
     email: str 
     password: str
     
-
+# |--- Schemas for User to update Profile Info ---|
+class UserUpdateModel(BaseModel):
+    first_name : Optional[str] = None
+    last_name: Optional[str] = None
     
