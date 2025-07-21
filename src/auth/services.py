@@ -126,3 +126,5 @@ class UserService:
         await session.refresh(user_to_update)
         
         return user_to_update
+    
+    # |--- Function to change password ----|

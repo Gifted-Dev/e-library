@@ -10,8 +10,14 @@
 
 from fastapi import APIRouter, status, Depends, BackgroundTasks
 from src.auth.services import UserService
-from src.auth.schemas import UserCreateModel, UserPublicModel, UserLoginModel, UserUpdateModel
-from src.auth.utils import create_verification_token
+from src.auth.schemas import (UserCreateModel, 
+                              UserPublicModel, 
+                              UserLoginModel, 
+                              UserUpdateModel, 
+                              ForgotPasswordSchema,
+                              ResetPasswordSchema,
+                              PasswordChangeSchema)
+from src.auth.utils import create_verification_token, create_password_reset_token, verify_password, generate_password_hash
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
 from src.config import Config
@@ -35,6 +41,9 @@ role_checker = RoleChecker(['user', 'admin', 'superadmin'])
 @auth_router.post("/signup", response_model=UserPublicModel, status_code=status.HTTP_201_CREATED)
 async def register_user(user_data: UserCreateModel, background_tasks:BackgroundTasks, session:AsyncSession = Depends(get_session)):
     
+    # --- 1. Check for Existing User ---
+    # To prevent duplicate accounts, we first check if a user with the provided email already exists.
+
 # |---- Check if user exists before creating user ----|
     
     # get user email
@@ -51,12 +60,17 @@ async def register_user(user_data: UserCreateModel, background_tasks:BackgroundT
             detail="User with email already exists"
         )
     
+    # --- 2. Create the New User ---
+    # If the email is unique, we proceed to create the user record in the database.
+    # The user service handles password hashing and initial role assignment.
     #create the user
     new_user = await user_service.create_user(user_data, session)
     
     
 # |---- User Verification ----|
-    
+    # --- 3. Send Verification Email ---
+    # We create a special, short-lived token and email it to the user.
+    # This is done in the background to avoid making the user wait.
     # create verification token
     verification_token = create_verification_token(
         user={
@@ -76,7 +90,8 @@ async def register_user(user_data: UserCreateModel, background_tasks:BackgroundT
     background_tasks.add_task(mail.send_message, message)
     
     
-    # |---- Check if email is a superadmin ----|
+    # --- 4. Handle Superadmin Promotion (Optional) ---
+    # If the new user's email is in our list of designated superadmins, we elevate their role.
     superadmin_emails = Config.SUPERADMIN_EMAILS
     
     # |---- Assign superadmin role to user ----|
@@ -89,6 +104,7 @@ async def register_user(user_data: UserCreateModel, background_tasks:BackgroundT
 
 @auth_router.get("/verify-email", status_code=status.HTTP_200_OK)
 async def verify_email(token:str, session:AsyncSession = Depends(get_session)):
+    # --- 1. Decode and Validate the Token ---
     # Decode token
     token_data = decode_token(token)
     
@@ -99,7 +115,8 @@ async def verify_email(token:str, session:AsyncSession = Depends(get_session)):
             detail="Invalid or expired verification token"
         )
         
-    # if token is valid, fetch user by email
+    # --- 2. Find the Corresponding User ---
+    # If the token is valid, we extract the user's email from its payload.
     email = token_data["user"]["email"]
     
     # get the user
@@ -111,10 +128,15 @@ async def verify_email(token:str, session:AsyncSession = Depends(get_session)):
             detail="This user's email is not found"
         )
     
+    # --- 3. Update User's Verification Status ---
     # update user verification status
     user.is_verified = True
     
+    # --- 4. Commit and Refresh ---
+    # `session.commit()` saves the change (is_verified = True) to the database.
     await session.commit()
+    # `session.refresh(user)` updates our 'user' object in Python with the latest data
+    # from the database, ensuring it's not stale.
     await session.refresh(user)
     
     return {"message": "Your email has been successful verified"}
@@ -123,6 +145,8 @@ async def verify_email(token:str, session:AsyncSession = Depends(get_session)):
 
 @auth_router.post("/login", status_code=status.HTTP_202_ACCEPTED)
 async def login_user(login_data: UserLoginModel, session: AsyncSession = Depends(get_session)):
+    # The user service handles the entire login flow: finding the user,
+    # checking for verification, verifying the password, and creating tokens.
     login = await user_service.login_user(login_data, session)
     return login
 
@@ -141,7 +165,9 @@ async def update_me(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ):
+    # The `get_current_user` dependency provides the user object to be updated.
     # Pass the user object from the dependency directly to the service.
+    
     updated_user = await user_service.update_user(current_user, update_data, session)
     
     return updated_user
@@ -151,6 +177,8 @@ async def update_me(
 async def get_new_access_token(
     token_details: dict = Depends(RefreshTokenBearer())
 ):
+    """# This endpoint takes a valid refresh token and issues a new, short-lived access token,
+    # allowing the user to stay logged in without re-entering their password."""
     
     # check for token expiry first
     token_expiry = token_details['exp']
@@ -162,7 +190,110 @@ async def get_new_access_token(
     else:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            token_details="Invalid or expired token"
+            detail="Invalid or expired token"
         )
         
+@auth_router.post("/forgot-password")
+async def forgot_password(user_data: ForgotPasswordSchema, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
+    """This route is used to send the user a password reset link"""
     
+    # 1. First we get the user email
+    email = user_data.email
+    
+    # 2. we get the user, to confirm if the user exists
+    user = await user_service.get_user_by_email(email, session)
+    
+        # confirming if user exists
+    if not user:
+        return {"message": "If an account with email exists, a password reset link has been sent"}
+
+    
+    # 3. Create a message and verification token that will be sent to the user
+    password_reset_token = create_password_reset_token(
+        user_data={"email" : email,
+                   "user_uid": str(user.uid)
+                   }
+    )
+    
+    reset_link = f"{Config.DOMAIN}/auth/reset-password?token={password_reset_token}"
+    
+    message = create_message(
+        recipient=[email],
+        subject="Password Reset",
+        body=f"Here is your reset link, it is only valid for 15 minutes: {reset_link} "
+    )
+    
+    # 4. Use background task to send the message
+    background_tasks.add_task(mail.send_message, message)
+    
+    return {"message": "If an account with email exists, a password reset link has been sent"}
+
+# |--- Route to reset password ---|
+@auth_router.post("/reset-password")
+async def reset_password(token: str, password:ResetPasswordSchema, session:AsyncSession = Depends(get_session)):
+    
+    # fetch the token
+    token_data = decode_token(token)
+
+    # check if the token is valid
+    if not token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired password reset token"
+        )
+    
+    # fetch the user details from token
+    user_uid = token_data["user"]["user_uid"]
+    user = await user_service.get_user_by_uid(user_uid, session)
+    
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This user does not exist in our database"
+        )
+    
+    # generate new password hash
+    new_password = password.password
+    new_password_hash = generate_password_hash(new_password)
+    
+    # Update the user password
+    user.password_hash = new_password_hash
+    
+    await session.commit()
+    await session.refresh(user)
+    
+    return {"message" : "Password reset successful!"}
+
+
+
+# |--- Route to change user password ---|
+@auth_router.post("/change-password")
+async def change_password(user_data:PasswordChangeSchema,
+                         current_user: User = Depends(get_current_user),
+                         session: AsyncSession = Depends(get_session)
+                         ):
+    
+    # get the user old and new password
+    old_password = user_data.old_password
+    
+    # check if user old password is correct
+    verification_successful = verify_password(old_password, current_user.password_hash)
+    
+    if not verification_successful:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Password"
+        )
+        
+    # get new password
+    new_password = user_data.new_password
+    new_password_hash = generate_password_hash(new_password)
+    
+    # update the user_password
+    current_user.password_hash = new_password_hash
+    
+    await session.commit()
+    await session.refresh(current_user)
+    
+    return {"message" : "Your password has been changed"}
