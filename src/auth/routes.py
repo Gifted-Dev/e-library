@@ -8,22 +8,24 @@
 
 
 
-from fastapi import APIRouter, status, Depends
+from fastapi import APIRouter, status, Depends, BackgroundTasks
 from src.auth.services import UserService
 from src.auth.schemas import UserCreateModel, UserPublicModel, UserLoginModel, UserUpdateModel
+from src.auth.utils import create_verification_token
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
+from src.config import Config
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
+from src.core.email import create_message, mail
 from src.config import Config
 from src.auth.dependencies import (
-    AccessTokenBearer,
     RefreshTokenBearer,
     get_current_user,
     RoleChecker,
     User
 )
-from src.auth.utils import create_access_token
+from src.auth.utils import create_access_token, decode_token
 from datetime import datetime
 
 auth_router = APIRouter()
@@ -31,9 +33,9 @@ user_service = UserService()
 role_checker = RoleChecker(['user', 'admin', 'superadmin'])
 
 @auth_router.post("/signup", response_model=UserPublicModel, status_code=status.HTTP_201_CREATED)
-async def register_user(user_data: UserCreateModel, session:AsyncSession = Depends(get_session)):
+async def register_user(user_data: UserCreateModel, background_tasks:BackgroundTasks, session:AsyncSession = Depends(get_session)):
     
-    # |---- Check if user exists before creating user ----|
+# |---- Check if user exists before creating user ----|
     
     # get user email
     email = user_data.email
@@ -52,6 +54,28 @@ async def register_user(user_data: UserCreateModel, session:AsyncSession = Depen
     #create the user
     new_user = await user_service.create_user(user_data, session)
     
+    
+# |---- User Verification ----|
+    
+    # create verification token
+    verification_token = create_verification_token(
+        user={
+            "email":email,
+            "user_uid": str(new_user.uid) # Makes sure to convert uid to string
+        }
+    )
+    
+    verification_url = f"{Config.DOMAIN}/auth/verify-email?token={verification_token}"
+    
+    message = create_message(
+        recipient=[email],
+        subject="Please verify your Email",
+        body=f"Click on the link to verify your email {verification_url}"
+    )
+    
+    background_tasks.add_task(mail.send_message, message)
+    
+    
     # |---- Check if email is a superadmin ----|
     superadmin_emails = Config.SUPERADMIN_EMAILS
     
@@ -62,6 +86,40 @@ async def register_user(user_data: UserCreateModel, session:AsyncSession = Depen
     
     # return the user
     return new_user
+
+@auth_router.get("/verify-email", status_code=status.HTTP_200_OK)
+async def verify_email(token:str, session:AsyncSession = Depends(get_session)):
+    # Decode token
+    token_data = decode_token(token)
+    
+    # check if token is valid
+    if not token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired verification token"
+        )
+        
+    # if token is valid, fetch user by email
+    email = token_data["user"]["email"]
+    
+    # get the user
+    user = await user_service.get_user_by_email(email, session)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This user's email is not found"
+        )
+    
+    # update user verification status
+    user.is_verified = True
+    
+    await session.commit()
+    await session.refresh(user)
+    
+    return {"message": "Your email has been successful verified"}
+ 
+    
 
 @auth_router.post("/login", status_code=status.HTTP_202_ACCEPTED)
 async def login_user(login_data: UserLoginModel, session: AsyncSession = Depends(get_session)):

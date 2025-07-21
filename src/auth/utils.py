@@ -51,6 +51,23 @@ def create_download_token(user_data: dict, book_uid: str, expiry:timedelta = Non
     
     return token
 
+def create_verification_token(user_data: dict, expiry: timedelta = None, refresh= False) -> str:
+    payload = {
+        "user" : user_data,
+        "exp" : datetime.now() + (expiry if expiry is not None else timedelta(hours=24)),
+        "jti": str(uuid.uuid4()),
+        "refresh": refresh,
+        "verification": True # Tells we are using a verification token
+    }
+    
+    token = jwt.encode(
+        payload=payload,
+        key = Config.JWT_SECRET,
+        algorithm=Config.JWT_ALGORITHM
+    )
+    
+    return token
+
 
 def decode_token(token:str) -> dict:
     try:

@@ -7,7 +7,7 @@ from src.db.main import get_session
 from src.auth.utils import create_download_token, decode_token
 from src.books.schemas import BookCreateModel, BookSearchModel, BookUpdateModel
 from src.books.services import BookService
-from src.auth.dependencies import AccessTokenBearer, RoleChecker
+from src.auth.dependencies import AccessTokenBearer, RoleChecker, ensure_user_is_verified
 from src.core.storage import get_storage_service
 from src.core.email import create_message, mail
 from datetime import datetime
@@ -119,7 +119,7 @@ async def search_books(title: Optional[str] = None, author: Optional[str] = None
 
 # |---- Route to Download book ----|
 @book_router.post("/{book_uid}/request-download",
-                    dependencies=[Depends(role_checker)],
+                    dependencies=[Depends(role_checker), Depends(ensure_user_is_verified)],
                     status_code=status.HTTP_202_ACCEPTED)
 async def request_download_link(book_uid: str, background_tasks: BackgroundTasks,
                         token_details: dict = Depends(AccessTokenBearer()),

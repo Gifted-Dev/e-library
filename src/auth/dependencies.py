@@ -56,6 +56,15 @@ async def get_current_user(
             detail="User not found")
     return user
 
+async def ensure_user_is_verified(
+    current_user: User = Depends(get_current_user)
+):
+    if not current_user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email address to perform this action"
+        )
+
 class RoleChecker:
     def __init__(self, allowed_roles: List[str], detail: str = "You do not have right to perform this action") -> None:
         self.allowed_roles = allowed_roles
