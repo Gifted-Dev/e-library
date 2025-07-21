@@ -49,11 +49,17 @@ async def get_current_user(
 ):
     email = token_data["user"]["email"]
     user = await user_service.get_user_by_email(email, session)
+    # Handle the case where the user might have been deleted after the token was issued.
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found")
     return user
 
 class RoleChecker:
-    def __init__(self, allowed_roles: List[str]) -> None:
+    def __init__(self, allowed_roles: List[str], detail: str = "You do not have right to perform this action") -> None:
         self.allowed_roles = allowed_roles
+        self.detail = detail
         
     async def __call__(self, current_user: User = Depends(get_current_user)):
         if current_user.role in self.allowed_roles:
@@ -61,5 +67,5 @@ class RoleChecker:
         else:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Restricted!"
+                detail=self.detail
             )

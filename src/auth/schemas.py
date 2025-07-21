@@ -1,23 +1,20 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from typing import List
 import uuid
 
+# This is the public-facing schema for a user. It safely exposes only non-sensitive data.
+class UserPublicModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-# |---- Schemas to Read User data ----|
-class UserModel(BaseModel):
     uid: uuid.UUID
-    # username: str  |--- Reserved for Future Use ---|
     first_name: str
     last_name: str
     is_verified: bool
     email: str
-    password_hash: str
+    role: str
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
-        
+
 # |---- Schemas Required to create User ----|
 class UserCreateModel(BaseModel):
     email: str

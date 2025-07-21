@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from fastapi import status
 from sqlmodel import select
 from datetime import timedelta, datetime
+from uuid import UUID
 
 #|---- Create a User Service Class that performs routes functions ----|
 class UserService:
@@ -21,13 +22,7 @@ class UserService:
         
         user = result.first()
         
-        if not user:
-            raise HTTPException(    
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User does not exist, signup to login"
-        )
-        
-        return user
+        return user # This will now correctly return the user object or None
     
     
     # |---- check if user exists ----|
@@ -53,40 +48,65 @@ class UserService:
         
         return new_user
     
+    
     async def login_user(self, login_data: UserLoginModel, session:AsyncSession):
         # check if user exists
         email = login_data.email # get the user email
-        user_password = login_data.password # get the user password
-        user_exists = await self.get_user_by_email(email, session)
-            
+        user = await self.get_user_by_email(email, session)
+        
+        # This is the correct place to check if the user exists for login.
+        if not user:
+            raise HTTPException(    
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User does not exist, signup to login"
+            )
         
         # if user exists, verify password
-        if user_exists:
-            validated = verify_password(user_password, user_exists.password_hash)
-           
-            if validated:
-                # create access token and refresh if password is valid
-                access_token = create_access_token(
-                    user_data={"email": user_exists.email, 
-                               "user_uid": str(user_exists.uid),
-                               "role": user_exists.role}
-                )
-                
-                refresh_token = create_access_token(
-                    user_data={"email": user_exists.email, 
-                               "user_uid": str(user_exists.uid),
-                               },
-                    refresh=True,
-                    expiry=timedelta(days=2)
-                )
-                
-                return JSONResponse(content={
-                    "message": "Login Successful",
-                    "access_token": access_token,
-                    "refresh_token": refresh_token
-                })
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Invalid Password!"
-                )
+        validated = verify_password(login_data.password, user.password_hash)
+       
+        if validated:
+            # create access token and refresh if password is valid
+            access_token = create_access_token(
+                user_data={"email": user.email, 
+                           "user_uid": str(user.uid),
+                           "role": user.role}
+            )
+            
+            refresh_token = create_access_token(
+                user_data={"email": user.email, 
+                           "user_uid": str(user.uid),
+                           },
+                refresh=True,
+                expiry=timedelta(days=2)
+            )
+            
+            return JSONResponse(content={
+                "message": "Login Successful",
+                "access_token": access_token,
+                "refresh_token": refresh_token
+            })
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid Password!"
+            )
+
+        # |----Get My Profile ----|
+    async def get_user_by_uid(self, user_uid: str, session:AsyncSession):
+        
+        # Convert user uid to UUID
+        user_uid = UUID(user_uid)
+        
+        # Statement to request user by uid and execute
+        statement = select(User).where(User.uid == user_uid)
+        result = await session.exec(statement)
+        user = result.first()
+        
+        # It's good practice for service methods to handle the "not found" case.
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User with UID {user_uid} not found."
+            )
+            
+        return user

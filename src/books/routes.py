@@ -19,8 +19,10 @@ from uuid import UUID
 
 
 book_router = APIRouter()
-role_checker = Depends(RoleChecker(['admin', 'user', 'superadmin']))
-admin_checker = Depends(RoleChecker(['admin']))
+role_checker = RoleChecker(['admin', 'user', 'superadmin'])
+
+admin_detail = "This action requires administrator priviledges"
+admin_checker = RoleChecker(['admin', 'superadmin'], admin_detail)
 
 user_service = UserService()
 book_service = BookService()
@@ -31,7 +33,7 @@ def is_valid_extension(filename: str) -> bool:
     return os.path.splitext(filename)[1].lower() in ALLOWED_EXTENSIONS
 
 
-@book_router.post("/upload", dependencies=[admin_checker])
+@book_router.post("/upload", dependencies=[Depends(admin_checker)])
 async def upload_file(title: str = Form(...),
                       author: str = Form(...),
                       description: str = Form(...),
@@ -86,7 +88,7 @@ async def upload_file(title: str = Form(...),
     }
     
 # |---- Routes to get all the books ----|
-@book_router.get("/all_books", dependencies=[role_checker], response_model=List[BookSearchModel])
+@book_router.get("/all_books", dependencies=[Depends(role_checker)], response_model=List[BookSearchModel])
 async def get_all_books(skip: int = 0, limit: int = 20, session: AsyncSession = Depends(get_session)):
     all_books = await book_service.get_all_books(skip, limit,session)
     # It's better to return an empty list with a 200 OK status if no books are found.
@@ -94,14 +96,14 @@ async def get_all_books(skip: int = 0, limit: int = 20, session: AsyncSession = 
     return all_books
 
 # |---- Get a particular book ----|
-@book_router.get("/get_book", dependencies=[role_checker], response_model=BookSearchModel)
+@book_router.get("/get_book", dependencies=[Depends(role_checker)], response_model=BookSearchModel)
 async def get_book(book_uid: str, session: AsyncSession = Depends(get_session)):
     book = await book_service.get_book(book_uid, session)
     
     return book
 
 # |---- Route to search for books ----|
-@book_router.get("/search", dependencies=[role_checker], response_model=List[BookSearchModel])
+@book_router.get("/search", dependencies=[Depends(role_checker)], response_model=List[BookSearchModel])
 async def search_books(title: Optional[str] = None, author: Optional[str] = None, skip: int = 0, limit: int = 20, session: AsyncSession = Depends(get_session)):
     # If the user doesn't provide any search terms, it's best to give them
     # a clear error instead of returning the entire list of books.
@@ -117,7 +119,7 @@ async def search_books(title: Optional[str] = None, author: Optional[str] = None
 
 # |---- Route to Download book ----|
 @book_router.post("/{book_uid}/request-download",
-                    dependencies=[role_checker],
+                    dependencies=[Depends(role_checker)],
                     status_code=status.HTTP_202_ACCEPTED)
 async def request_download_link(book_uid: str, background_tasks: BackgroundTasks,
                         token_details: dict = Depends(AccessTokenBearer()),
@@ -164,7 +166,7 @@ async def request_download_link(book_uid: str, background_tasks: BackgroundTasks
     return {"message" : "A download link will be sent to your email shortly"}
     
 # |---- Route to download file ----|
-@book_router.get("/download", dependencies=[role_checker])
+@book_router.get("/download")
 async def download_book(token: str, session: AsyncSession = Depends(get_session)):
     token_data = decode_token(token)
     if not token_data:
@@ -194,7 +196,7 @@ async def download_book(token: str, session: AsyncSession = Depends(get_session)
 
 
 # |------- Route to Update Book ----------|
-@book_router.patch("/{book_uid}/update", response_model=BookSearchModel, dependencies=[admin_checker])
+@book_router.patch("/{book_uid}/update", response_model=BookSearchModel, dependencies=[Depends(admin_checker)])
 async def update_book(book_uid: str, book_data: BookUpdateModel, session: AsyncSession = Depends(get_session)):
     # |---- Update Book Using the Book Service -----|
     book = await book_service.update_book(book_uid, book_data, session)
@@ -202,8 +204,8 @@ async def update_book(book_uid: str, book_data: BookUpdateModel, session: AsyncS
     return book
 
 # |---- Route to delete book ---|
-@book_router.delete("/delete-book", dependencies=[admin_checker])
-async def delete_book(book_uid:str, session:AsyncSession = Depends(get_session)):
-    book = await book_service.delete_book(book_uid, session)
+@book_router.delete("/delete-book", dependencies=[Depends(admin_checker)], status_code=status.HTTP_204_NO_CONTENT)
+async def delete_book(book_uid:str, session:AsyncSession = Depends(get_session)) -> None:
+    await book_service.delete_book(book_uid, session)
     
-    return book
+    return None

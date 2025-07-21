@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional
 import uuid
@@ -12,12 +12,14 @@ class BookCreateModel(BaseModel):
     uploaded_by: Optional[uuid.UUID]
     
 class BookUpdateModel(BaseModel):
-    title: Optional[str]
-    author: Optional[str]
-    description: Optional[str]
+    # Add a default value of None to make these fields truly optional in the request body.
+    title: Optional[str] = None
+    author: Optional[str] = None
+    description: Optional[str] = None
 
 # a response model for book search
 class BookSearchModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     uid: uuid.UUID
     title: str
     author: str
@@ -25,5 +27,3 @@ class BookSearchModel(BaseModel):
     cover_image: Optional[str]
     upload_date: datetime
     
-    class Config:
-        from_attributes = True

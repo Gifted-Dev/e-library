@@ -2,6 +2,7 @@ import os
 import io
 import uuid
 from urllib.parse import urlparse
+import asyncio
 from fastapi import UploadFile
 from src.config import Config
 import aiofiles
@@ -31,11 +32,20 @@ class LocalStorageService:
         return filename, path, file_size
 
     async def file_exists(self, file_path: str) -> bool:
-        # aiofiles.os.path.exists directly returns True or False. No try/except needed.
-        return await aiofiles.os.path.exists(file_path)
+        # This is a robust way to check for file existence asynchronously
+        # without relying on aiofiles.os, which can cause issues in some environments.
+        try:
+            async with aiofiles.open(file_path, mode="r"):
+                pass
+            return True
+        except FileNotFoundError:
+            return False
     
     async def delete_file(self, file_url: str):
-        await aiofiles.os.remove(file_url)
+        # To avoid the 'aiofiles has no attribute os' error, we can run the
+        # blocking os.remove call in a separate thread using asyncio's executor.
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, os.remove, file_url)
 
 
 class S3StorageService:

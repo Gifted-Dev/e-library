@@ -10,7 +10,7 @@
 
 from fastapi import APIRouter, status, Depends
 from src.auth.services import UserService
-from src.auth.schemas import UserCreateModel, UserModel, UserLoginModel
+from src.auth.schemas import UserCreateModel, UserPublicModel, UserLoginModel
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
 from fastapi.exceptions import HTTPException
@@ -20,7 +20,8 @@ from src.auth.dependencies import (
     AccessTokenBearer,
     RefreshTokenBearer,
     get_current_user,
-    RoleChecker
+    RoleChecker,
+    User
 )
 from src.auth.utils import create_access_token
 from datetime import datetime
@@ -29,9 +30,7 @@ auth_router = APIRouter()
 user_service = UserService()
 role_checker = RoleChecker(['user', 'admin', 'superadmin'])
 
-@auth_router.post("/signup", response_model= UserModel, status_code=status.HTTP_201_CREATED)
-
-
+@auth_router.post("/signup", response_model=UserPublicModel, status_code=status.HTTP_201_CREATED)
 async def register_user(user_data: UserCreateModel, session:AsyncSession = Depends(get_session)):
     
     # |---- Check if user exists before creating user ----|
@@ -64,10 +63,17 @@ async def register_user(user_data: UserCreateModel, session:AsyncSession = Depen
     # return the user
     return new_user
 
-@auth_router.post("/login", response_model=UserModel, status_code=status.HTTP_202_ACCEPTED)
+@auth_router.post("/login", status_code=status.HTTP_202_ACCEPTED)
 async def login_user(login_data: UserLoginModel, session: AsyncSession = Depends(get_session)):
     login = await user_service.login_user(login_data, session)
     return login
+
+
+@auth_router.get("/users/me", response_model=UserPublicModel)
+async def get_me(current_user: User = Depends(get_current_user)):
+    # The `get_current_user` dependency already fetches the user object from the DB.
+    # All we need to do is return it. FastAPI will filter it through the response_model.
+    return current_user
 
 
 # To generate new access token 

@@ -145,7 +145,7 @@ class BookService:
         await session.delete(book)
         await session.commit()
         
-        return None
+        return {"message" : "Book has been deleted successfully."}
     
     async def create_download_record(self, book_uid: str, user_uid: str, session: AsyncSession):
         # Convert string UIDs to UUID objects, as the database model expects.
