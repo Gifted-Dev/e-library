@@ -11,7 +11,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from fastapi import status
-from sqlmodel import select
+from sqlmodel import select, desc
 from datetime import timedelta, datetime
 from uuid import UUID
 
@@ -148,3 +148,18 @@ class UserService:
         )
         
         background_tasks.add_task(mail.send_message, message)
+        
+    async def get_all_users(self, session: AsyncSession, skip: int = 0, limit: int = 20):
+        statement = select(User).order_by(desc(User.created_at)).offset(skip).limit(limit)
+        
+        result =  await session.exec(statement)
+        
+        return result.all()
+    
+    async def get_all_admins(self, session: AsyncSession, skip: int = 0, limit: int = 20):
+        statement = select(User).where(User.role == 'admin').order_by(desc(User.created_at), desc(User.uid)).offset(skip).limit(limit)
+        
+        result =  await session.exec(statement)
+        
+        return result.all()
+        

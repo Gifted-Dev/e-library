@@ -5,11 +5,13 @@ from src.db.main import get_session
 from src.auth.schemas import UserPublicModel
 from src.auth.services import UserService
 from src.auth.dependencies import RoleChecker
+from typing import List
 
 admin_router = APIRouter()
 superadmin_checker = RoleChecker(
     ['superadmin'], detail="This action requires super-administrator priviledges"
 )
+admin_checker = RoleChecker(['admin', 'superadmin'])
 user_service = UserService()
 
 
@@ -49,11 +51,12 @@ async def revoke_admin(email:str = Form(...), session: AsyncSession = Depends(ge
     user = await user_service.get_user_by_email(email, session)
     
     
-    # |--- Confirm is user is previous an admin user ----|
+    # |--- Confirm the user is an admin before revoking privileges ----|
+    # This prevents trying to revoke from a 'superadmin' or a regular 'user'.
     if user.role != "admin":
         raise HTTPException(
             status_code = status.HTTP_400_BAD_REQUEST,
-            detail = "User does not have admin access"
+            detail = "This user is not an admin."
         )
     
     # |--- Remove admin access ---|
@@ -64,3 +67,13 @@ async def revoke_admin(email:str = Form(...), session: AsyncSession = Depends(ge
     await session.refresh(user)
     
     return user
+
+# |---- API to list all Users ---|
+@admin_router.get("/users", response_model=List[UserPublicModel], dependencies=[Depends(admin_checker)], status_code=status.HTTP_200_OK)
+async def get_all_users(skip: int = 0, limit: int = 20, session: AsyncSession = Depends(get_session)):
+    return await user_service.get_all_users(skip, limit, session)
+    
+@admin_router.get("/admins", response_model=List[UserPublicModel], dependencies=[Depends(superadmin_checker)], status_code=status.HTTP_200_OK)
+async def get_all_admins(skip: int = 0, limit: int = 20, session: AsyncSession = Depends(get_session)):
+    return await user_service.get_all_admins(skip, limit, session)
+    
