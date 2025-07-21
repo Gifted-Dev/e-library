@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     MAIL_SSL_TLS: bool = False
     USE_CREDENTIALS: bool = True
     VALIDATE_CERTS: bool = True
-    DOMAIN: str
+
         
     # For Future s3 bucket
     AWS_ACCESS_KEY_ID: str
@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # Domain Name for e-library
     DOMAIN:str
+    CLIENT_DOMAIN:str
     
     @property
     def SUPERADMIN_EMAILS(self) -> List[str]:
@@ -39,3 +40,6 @@ class Settings(BaseSettings):
     )
     
 Config = Settings()
+
+# --- Temporary Debug Print ---
+print(f"--- Loaded DOMAIN from config: {Config.DOMAIN} ---")

@@ -151,7 +151,7 @@ async def request_download_link(book_uid: str, background_tasks: BackgroundTasks
     )
     
     # |--- Construct a secure URL with the token as a query parameter ----|
-    file_url = f"{Config.DOMAIN}/api/v1/books/download?token={book_request_token}"
+    file_url = f"{Config.DOMAIN}/books/download?token={book_request_token}"
     
     message = create_message(
         recipient=[user_email],

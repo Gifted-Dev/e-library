@@ -125,7 +125,7 @@ class BookService:
         return book
         
     
-    async def delete_book(self, book_uid: str, session:AsyncSession):
+    async def delete_book(self, book_uid: str, session:AsyncSession) -> None:
         # |---- select book by uid ----|
         book = await self.get_book(book_uid, session)
         

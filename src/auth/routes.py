@@ -38,6 +38,8 @@ auth_router = APIRouter()
 user_service = UserService()
 role_checker = RoleChecker(['user', 'admin', 'superadmin'])
 
+
+
 @auth_router.post("/signup", response_model=UserPublicModel, status_code=status.HTTP_201_CREATED)
 async def register_user(user_data: UserCreateModel, background_tasks:BackgroundTasks, session:AsyncSession = Depends(get_session)):
     
@@ -67,27 +69,7 @@ async def register_user(user_data: UserCreateModel, background_tasks:BackgroundT
     new_user = await user_service.create_user(user_data, session)
     
     
-# |---- User Verification ----|
-    # --- 3. Send Verification Email ---
-    # We create a special, short-lived token and email it to the user.
-    # This is done in the background to avoid making the user wait.
-    # create verification token
-    verification_token = create_verification_token(
-        user={
-            "email":email,
-            "user_uid": str(new_user.uid) # Makes sure to convert uid to string
-        }
-    )
-    
-    verification_url = f"{Config.DOMAIN}/auth/verify-email?token={verification_token}"
-    
-    message = create_message(
-        recipient=[email],
-        subject="Please verify your Email",
-        body=f"Click on the link to verify your email {verification_url}"
-    )
-    
-    background_tasks.add_task(mail.send_message, message)
+    await user_service.verification_logic(email, new_user, background_tasks)
     
     
     # --- 4. Handle Superadmin Promotion (Optional) ---
@@ -141,6 +123,20 @@ async def verify_email(token:str, session:AsyncSession = Depends(get_session)):
     
     return {"message": "Your email has been successful verified"}
  
+@auth_router.post("/resend-verification", status_code=status.HTTP_202_ACCEPTED)
+async def resend_verification(background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
+    verified = current_user.is_verified
+    
+    if verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This user is already verified"
+        )
+    
+    await user_service.verification_logic(current_user.email, current_user, background_tasks)
+    
+    return {"message": "A new verification email has been sent."}
+    
     
 
 @auth_router.post("/login", status_code=status.HTTP_202_ACCEPTED)
@@ -229,8 +225,8 @@ async def forgot_password(user_data: ForgotPasswordSchema, background_tasks: Bac
     return {"message": "If an account with email exists, a password reset link has been sent"}
 
 # |--- Route to reset password ---|
-@auth_router.post("/reset-password")
-async def reset_password(token: str, password:ResetPasswordSchema, session:AsyncSession = Depends(get_session)):
+@auth_router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_password(token: str, password_data:ResetPasswordSchema, session:AsyncSession = Depends(get_session)):
     
     # fetch the token
     token_data = decode_token(token)
@@ -254,7 +250,7 @@ async def reset_password(token: str, password:ResetPasswordSchema, session:Async
         )
     
     # generate new password hash
-    new_password = password.password
+    new_password = password_data.password
     new_password_hash = generate_password_hash(new_password)
     
     # Update the user password
@@ -263,12 +259,12 @@ async def reset_password(token: str, password:ResetPasswordSchema, session:Async
     await session.commit()
     await session.refresh(user)
     
-    return {"message" : "Password reset successful!"}
+    return None
 
 
 
 # |--- Route to change user password ---|
-@auth_router.post("/change-password")
+@auth_router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
 async def change_password(user_data:PasswordChangeSchema,
                          current_user: User = Depends(get_current_user),
                          session: AsyncSession = Depends(get_session)
@@ -296,4 +292,4 @@ async def change_password(user_data:PasswordChangeSchema,
     await session.commit()
     await session.refresh(current_user)
     
-    return {"message" : "Your password has been changed"}
+    return None

@@ -1,9 +1,12 @@
 from src.db.models import User
 from src.auth.schemas import UserCreateModel, UserLoginModel, UserUpdateModel
+from src.core.email import mail, create_message
+from src.config import Config
 from src.auth.utils import (
     generate_password_hash, 
     verify_password,
-    create_access_token)
+    create_access_token,
+    create_verification_token)
 from sqlmodel.ext.asyncio.session import AsyncSession
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
@@ -128,3 +131,20 @@ class UserService:
         return user_to_update
     
     # |--- Function to change password ----|
+    async def verification_logic(self, email, user, background_tasks):
+        verification_token = create_verification_token(
+            user_data={
+                "email":email,
+                "user_uid": str(user.uid) # Makes sure to convert uid to string
+            }
+        )
+        
+        verification_url = f"{Config.DOMAIN}/auth/verify-email?token={verification_token}"
+        
+        message = create_message(
+            recipient=[email],
+            subject="Please verify your Email",
+            body=f"Click on the link to verify your email {verification_url}"
+        )
+        
+        background_tasks.add_task(mail.send_message, message)
