@@ -1,22 +1,22 @@
-# E-Library API
+# E-Library API 📚
 
 An online library system built with a robust FastAPI backend, designed for managing, searching, and securely downloading books.
 
 ## About The Project
 
-This project is a comprehensive, production-ready backend API for an e-library platform. It features a secure authentication system, role-based access control, and a flexible file storage backend. The API is designed to be consumed by a separate frontend application (e.g., React, Vue, or a mobile app).
+This project is a comprehensive, production-ready backend API for an e-library platform. It features a secure authentication system, role-based access control, and a flexible file storage backend. The API is designed to be consumed by a separate frontend application (e.g., React, Vue, or a mobile app). 🚀
 
-## Key Features
+## Key Features ✨
 
-*   **Complete User Authentication:** Secure user registration with email verification, login with JWT (access/refresh tokens), and a full password management flow (forgot/reset/change).
-*   **Role-Based Access Control (RBAC):** A three-tier role system (`user`, `admin`, `superadmin`) protects sensitive endpoints and actions.
-*   **Full Book Management (CRUD):** Admins can upload, view, update, and delete books.
-*   **Dual Storage Backend:** A flexible storage service that can save files to either the **local disk** for development or **Amazon S3** for production.
-*   **Secure Asynchronous Downloads:** Users receive secure, temporary, one-time-use download links via professional HTML emails.
-*   **Comprehensive Admin Panel:** Endpoints for admins to list all users, manage admin roles, and view a complete history of all book downloads.
-*   **User-Specific Features:** Users can view and update their own profiles and see a history of their personal downloads.
+*   🛡️ **Complete User Authentication:** Secure user registration with email verification, login with JWT (access/refresh tokens), and a full password management flow (forgot/reset/change).
+*   👑 **Role-Based Access Control (RBAC):** A three-tier role system (`user`, `admin`, `superadmin`) protects sensitive endpoints and actions.
+*   📖 **Full Book Management (CRUD):** Admins can upload, view, update, and delete books.
+*   ☁️ **Dual Storage Backend:** A flexible storage service that can save files to either the **local disk** for development or **Amazon S3** for production.
+*   📧 **Secure Asynchronous Downloads:** Users receive secure, temporary, one-time-use download links via professional HTML emails.
+*   📊 **Comprehensive Admin Panel:** Endpoints for admins to list all users, manage admin roles, and view a complete history of all book downloads.
+*   👤 **User-Specific Features:** Users can view and update their own profiles and see a history of their personal downloads.
 
-## Built With
+## Built With 🛠️
 
 This project leverages a modern, asynchronous Python technology stack.
 
@@ -29,7 +29,7 @@ This project leverages a modern, asynchronous Python technology stack.
 *   **File Storage:** aioboto3 for S3, aiofiles for local storage
 *   **Email:** fastapi-mail with Jinja2 for HTML templates
 
-## Getting Started
+## Getting Started 🚀
 
 To get a local copy up and running, follow these simple steps.
 
@@ -42,7 +42,7 @@ To get a local copy up and running, follow these simple steps.
 
 1.  **Clone the repository:**
     ```sh
-    git clone https://github.com/Gifted-Dev/e-library.git
+    git clone https://github.com/your_username/your_repository_name.git
     cd your_repository_name
     ```
 
