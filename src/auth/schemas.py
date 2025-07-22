@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, ConfigDict
+from src.books.schemas import BookInDownloadLog # This import is now correct
 from datetime import datetime
 from typing import List, Optional
 import uuid
@@ -42,3 +43,9 @@ class PasswordChangeSchema(BaseModel):
     
 class ResetPasswordSchema(BaseModel):
     password: str
+    
+class UserDownloadHistoryModel(BaseModel):
+    timestamp: datetime
+    book: BookInDownloadLog
+    
+    model_config = ConfigDict(from_attributes=True)

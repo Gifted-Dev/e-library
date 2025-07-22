@@ -36,7 +36,10 @@ class User(SQLModel, table=True):
         pg.TIMESTAMP,
         default=datetime.now
     ))
-    
+    downloads: List["Downloads"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"lazy":"selectin"}
+    )
     
 class Book(SQLModel, table=True):
     __tablename__ = "books"
@@ -64,6 +67,10 @@ class Book(SQLModel, table=True):
         )
     )
     
+    downloads: List["Downloads"] = Relationship(
+        back_populates="book",
+        sa_relationship_kwargs={"lazy": "selectin"}
+    )
     
 
 
@@ -82,7 +89,7 @@ class Downloads(SQLModel, table=True):
     
     user_id: Optional[uuid.UUID] = Field(
         sa_column=Column(
-            ForeignKey("users.uid"),
+            ForeignKey("users.uid", ondelete="CASCADE"),
             default=None,
             nullable=True
         )
@@ -90,7 +97,7 @@ class Downloads(SQLModel, table=True):
     
     book_id: Optional[uuid.UUID] = Field(
         sa_column=Column(
-            ForeignKey("books.uid"),
+            ForeignKey("books.uid", ondelete="CASCADE"),
             default=None,
             nullable=True
         )
@@ -109,4 +116,14 @@ class Downloads(SQLModel, table=True):
             nullable=False,
             server_default="false"
         )
+    )
+    
+    user: Optional["User"] = Relationship(
+        back_populates="downloads",
+        sa_relationship_kwargs={"lazy":"selectin"}
+    )
+    
+    book: Optional["Book"] = Relationship(
+        back_populates="downloads",
+        sa_relationship_kwargs={"lazy":"selectin"}
     )

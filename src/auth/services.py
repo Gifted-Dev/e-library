@@ -1,6 +1,6 @@
-from src.db.models import User
+from src.db.models import User, Downloads
 from src.auth.schemas import UserCreateModel, UserLoginModel, UserUpdateModel
-from src.core.email import mail, create_message
+from src.core.email import create_message, send_email
 from src.config import Config
 from src.auth.utils import (
     generate_password_hash, 
@@ -10,6 +10,7 @@ from src.auth.utils import (
 from sqlmodel.ext.asyncio.session import AsyncSession
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
+from fastapi_mail import MessageType
 from fastapi import status
 from sqlmodel import select, desc
 from datetime import timedelta, datetime
@@ -141,13 +142,23 @@ class UserService:
         
         verification_url = f"{Config.DOMAIN}/auth/verify-email?token={verification_token}"
         
+        # Create a MessageSchema object directly to use templates.
+        # message = MessageSchema(
+        #     subject="Please verify your Email",
+        #     recipients=[email],
+        #     # Pass data to the template using `template_body`.
+        #     # The keys must match the placeholders in your .html file (e.g., {{ verification_url }}).
+        #     template_body={"verification_url": verification_url, "first_name": user.first_name},
+        #     subtype=MessageType.html
+        # )
+        
         message = create_message(
-            recipient=[email],
             subject="Please verify your Email",
-            body=f"Click on the link to verify your email {verification_url}"
+            recipients=[email],
+            template_body={"verification_url": verification_url, "first_name": user.first_name}
         )
         
-        background_tasks.add_task(mail.send_message, message)
+        await send_email(background_tasks, message, template_name="verify_email.html")
         
     async def get_all_users(self, session: AsyncSession, skip: int = 0, limit: int = 20):
         statement = select(User).order_by(desc(User.created_at)).offset(skip).limit(limit)
@@ -163,3 +174,9 @@ class UserService:
         
         return result.all()
         
+    async def get_user_download_history(self, user_id: str, session: AsyncSession, skip: int = 0, limit: int = 20):
+        statement = select(Downloads).where(Downloads.user_id == user_id).order_by(desc(Downloads.timestamp)).offset(skip).limit(limit)
+        
+        result = await session.exec(statement)
+        
+        return result.all()

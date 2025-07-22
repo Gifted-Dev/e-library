@@ -14,16 +14,17 @@ from src.auth.schemas import (UserCreateModel,
                               UserPublicModel, 
                               UserLoginModel, 
                               UserUpdateModel, 
+                              UserDownloadHistoryModel,
                               ForgotPasswordSchema,
                               ResetPasswordSchema,
                               PasswordChangeSchema)
 from src.auth.utils import create_verification_token, create_password_reset_token, verify_password, generate_password_hash
-from sqlalchemy.ext.asyncio.session import AsyncSession
+from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
 from src.config import Config
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
-from src.core.email import create_message, mail
+from src.core.email import create_message, send_email
 from src.config import Config
 from src.auth.dependencies import (
     RefreshTokenBearer,
@@ -31,8 +32,10 @@ from src.auth.dependencies import (
     RoleChecker,
     User
 )
+from fastapi_mail import MessageType
 from src.auth.utils import create_access_token, decode_token
 from datetime import datetime
+from typing import List
 
 auth_router = APIRouter()
 user_service = UserService()
@@ -211,16 +214,17 @@ async def forgot_password(user_data: ForgotPasswordSchema, background_tasks: Bac
                    }
     )
     
-    reset_link = f"{Config.DOMAIN}/auth/reset-password?token={password_reset_token}"
+    # This link should point to your frontend application.
+    reset_link = f"{Config.DOMAIN}/reset-password?token={password_reset_token}"
     
     message = create_message(
-        recipient=[email],
-        subject="Password Reset",
-        body=f"Here is your reset link, it is only valid for 15 minutes: {reset_link} "
+        subject="Password Reset Request",
+        recipients=[email],
+        template_body={"reset_link": reset_link, "first_name": user.first_name},
     )
     
     # 4. Use background task to send the message
-    background_tasks.add_task(mail.send_message, message)
+    await send_email(background_tasks, message, template_name="reset_password.html")
     
     return {"message": "If an account with email exists, a password reset link has been sent"}
 
@@ -293,3 +297,9 @@ async def change_password(user_data:PasswordChangeSchema,
     await session.refresh(current_user)
     
     return None
+
+@auth_router.get("/users/me/downloads", response_model=List[UserDownloadHistoryModel])
+async def get_downloads(current_user : User = Depends(get_current_user), 
+                        session: AsyncSession = Depends(get_session), 
+                        skip: int = 0, limit: int = 20):
+   return await user_service.get_user_download_history(current_user.uid, session, skip, limit)

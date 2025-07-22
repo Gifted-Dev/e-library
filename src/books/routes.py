@@ -8,8 +8,8 @@ from src.auth.utils import create_download_token, decode_token
 from src.books.schemas import BookCreateModel, BookSearchModel, BookUpdateModel
 from src.books.services import BookService
 from src.auth.dependencies import AccessTokenBearer, RoleChecker, ensure_user_is_verified
-from src.core.storage import get_storage_service
-from src.core.email import create_message, mail
+from src.core.storage import get_storage_service 
+from src.core.email import create_message, send_email
 from datetime import datetime
 from typing import Optional, List
 from src.config import Config
@@ -154,14 +154,12 @@ async def request_download_link(book_uid: str, background_tasks: BackgroundTasks
     file_url = f"{Config.DOMAIN}/books/download?token={book_request_token}"
     
     message = create_message(
-        recipient=[user_email],
         subject=f"Download Link for {book.title}",
-        body=f"Here is the download link for {book.title}: {file_url}"
+        recipients=[user_email],
+        template_body={"download_url": file_url, "book_title": book.title}
     )
     
-    background_tasks.add_task(
-        mail.send_message,
-        message=message)
+    await send_email(background_tasks, message, template_name="download_link.html")
         
     return {"message" : "A download link will be sent to your email shortly"}
     

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Your Download Is Ready</title>
+</head>
+<body style="font-family: sans-serif; text-align: center; color: #333;">
+    <div style="padding: 20px; border: 1px solid #ddd; max-width: 600px; margin: auto; border-radius: 8px;">
+        <h2>Your Download Is Ready!</h2>
+        <p>Here is the secure download link for the book: <strong>{{ book_title }}</strong>.</p>
+        <p>This link will expire in 60 minutes.</p>
+        <a href="{{ download_url }}" style="display: inline-block; margin: 20px 0; padding: 12px 25px; background-color: #17a2b8; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">
+            Download Now
+        </a>
+    </div>
+</body>
+</html>

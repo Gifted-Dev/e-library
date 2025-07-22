@@ -160,3 +160,12 @@ class BookService:
         await session.refresh(new_download)
         
         return new_download
+    
+    async def get_download_logs(self, session: AsyncSession, skip: int = 0, limit: int = 20):
+        # Statement to query download logs, ordered by the most recent first.
+        statement = select(Downloads).order_by(desc(Downloads.timestamp)).offset(skip).limit(limit)
+        
+        # Execute the statement
+        result = await session.exec(statement)
+        
+        return result.all()

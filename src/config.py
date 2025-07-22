@@ -19,16 +19,17 @@ class Settings(BaseSettings):
     USE_CREDENTIALS: bool = True
     VALIDATE_CERTS: bool = True
 
-        
+     # --- App Config ---
+    ENVIRONMENT: str = "p"
+    DOMAIN: str
+    CLIENT_DOMAIN: str
+
+    
     # For Future s3 bucket
     AWS_ACCESS_KEY_ID: str
     AWS_SECRET_ACCESS_KEY: str
     AWS_REGION: str
     AWS_BUCKET_NAME: str
-
-    # Domain Name for e-library
-    DOMAIN:str
-    CLIENT_DOMAIN:str
     
     @property
     def SUPERADMIN_EMAILS(self) -> List[str]:
@@ -41,5 +42,5 @@ class Settings(BaseSettings):
     
 Config = Settings()
 
-# --- Temporary Debug Print ---
-print(f"--- Loaded DOMAIN from config: {Config.DOMAIN} ---")
+
+   

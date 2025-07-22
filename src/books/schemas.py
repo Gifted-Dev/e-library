@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 import uuid
 
 
@@ -26,4 +26,16 @@ class BookSearchModel(BaseModel):
     description: str
     cover_image: Optional[str]
     upload_date: datetime
+
+class BookInDownloadLog(BaseModel):
+    title: str
+
+class UserInDownloadLog(BaseModel):
+    email: str
+
+class DownloadLogPublicModel(BaseModel):
+    timestamp : datetime
+    user: UserInDownloadLog
+    book: BookInDownloadLog
     
+    model_config = ConfigDict(from_attributes=True)
