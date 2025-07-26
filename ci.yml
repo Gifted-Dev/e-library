@@ -1,0 +1,43 @@
+# This GitHub Actions workflow defines the Continuous Integration (CI) pipeline.
+# It builds the production Docker image and pushes it to a container registry.
+
+name: CI - Build and Push Docker Image
+
+# This pipeline triggers on every push to the 'main' branch.
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Check out the repository code
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Step 2: Log in to Docker Hub
+      # You will need to create secrets in your GitHub repository settings
+      # named DOCKERHUB_USERNAME and DOCKERHUB_TOKEN for this to work.
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Step 3: Build and push the Docker image
+      # This step uses the production Dockerfile to build the image and pushes
+      # it to your Docker Hub repository. It tags the image with 'latest'.
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.prod
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/e-library:latest
+
+      # A future CD step would go here. For example:
+      # - name: Deploy to production
+      #   run: |
+      #     ssh user@your-server "cd /path/to/app && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d"
+

@@ -1,0 +1,51 @@
+# ---- Builder Stage ----
+# This stage prepares the application and its dependencies.
+FROM python:3.11-slim as builder
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# Create and set the working directory
+WORKDIR /app
+
+# Create a virtual environment to isolate dependencies
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy and install requirements
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+
+
+# ---- Final Stage ----
+# This stage creates the final, lean production image.
+FROM python:3.11-slim
+
+# Create a non-root user to run the application for better security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Copy the virtual environment from the builder stage
+COPY --from=builder /opt/venv /opt/venv
+
+# Make the virtual environment's Python the default
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy only the necessary application code. This is more secure and explicit
+# than `COPY . .` and works with the .dockerignore file.
+WORKDIR /app
+COPY src ./src
+COPY alembic.ini .
+COPY migrations ./migrations
+
+# Set ownership for all application files after they are copied
+RUN chown -R appuser:appuser /app
+
+# Switch to the non-root user
+USER appuser
+
+# Expose the application port
+EXPOSE 8000
+
+# Run the application with multiple workers for better performance in production.
+CMD ["uvicorn", "src:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

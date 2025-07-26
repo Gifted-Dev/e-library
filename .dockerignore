@@ -1,0 +1,15 @@
+# Git and environment files
+.git
+.gitignore
+.env
+
+# Docker files
+Dockerfile
+Dockerfile.prod
+docker-compose.yml
+docker-compose.prod.yml
+
+# Python specific
+__pycache__/
+.venv/
+*.pyc

@@ -31,46 +31,87 @@ This project leverages a modern, asynchronous Python technology stack.
 
 ## Getting Started 🚀
 
-To get a local copy up and running, follow these simple steps.
+This project is fully containerized using Docker and Docker Compose, which is the recommended way to run it for development.
 
 ### Prerequisites
 
-*   Python 3.11+
-*   A running PostgreSQL instance
+*   [Docker](https://www.docker.com/get-started)
+*   [Docker Compose](https://docs.docker.com/compose/install/)
 
-### Installation
+### Running with Docker (Recommended)
 
 1.  **Clone the repository:**
     ```sh
     git clone https://github.com/Gifted-Dev/e-library.git
-    cd your_repository_name
+    cd e-library
     ```
 
-2.  **Create and activate a virtual environment:**
-    ```sh
-    python -m venv .venv
-    source .venv/bin/activate  # On Windows use `.venv\Scripts\activate`
-    ```
-
-3.  **Install the dependencies:**
-    ```sh
-    pip install -r requirements.txt
-    ```
-
-4.  **Set up your environment variables:**
+2.  **Set up your environment variables:**
     *   Create a `.env` file in the root directory by copying the example file:
         ```sh
         cp .env.example .env
         ```
     *   Edit the `.env` file with your specific database credentials, JWT secret, and email settings.
 
-5.  **Run the database migrations:**
+3.  **Build and run the containers:**
+    This command will build the backend image and start both the FastAPI application and the PostgreSQL database containers in the background.
     ```sh
-    alembic upgrade head
+    docker compose up --build -d
     ```
 
-6.  **Run the application:**
+4.  **Run the database migrations:**
+    With the containers running, execute the following command to apply the database schema to the new database.
     ```sh
-    uvicorn src:app --reload
+    docker compose exec backend alembic upgrade head
     ```
-    The API will be available at `http://localhost:8000`.
+
+5.  **You're all set!**
+    The API will be available at `http://localhost:8000/docs`.
+
+<details>
+<summary>Click here for manual local setup (without Docker)</summary>
+
+### Prerequisites
+*   Python 3.11+
+*   A running PostgreSQL instance
+
+### Installation
+1.  **Clone the repository** and `cd` into the directory.
+2.  **Create and activate a virtual environment:**
+    ```sh
+    python -m venv .venv && source .venv/bin/activate
+    ```
+3.  **Install dependencies:** `pip install -r requirements-dev.txt`
+4.  **Set up your `.env` file** as described in the Docker instructions.
+5.  **Run migrations:** `alembic upgrade head`
+6.  **Run the app:** `uvicorn src:app --reload`
+
+</details>
+
+## Production & Deployment ⚙️
+
+This repository is configured for a professional production deployment and CI/CD workflow.
+
+*   **Production-Ready Image:** The `Dockerfile.prod` file uses a multi-stage build to create a lean, optimized, and secure image. It runs the application as a non-root user and includes multiple Uvicorn workers for better performance.
+*   **Production Compose File:** The `docker-compose.prod.yml` is configured to run the pre-built production image.
+*   **Continuous Integration:** The `.github/workflows/ci.yml` file defines a GitHub Actions pipeline that automatically builds the production image and pushes it to Docker Hub on every commit to the `main` branch.
+
+### Running in Production Mode (Locally)
+
+You can test the production-ready container on your local machine by following these steps:
+
+1.  **Build the production image:**
+    This command uses the `Dockerfile.prod` to build and tag the final image.
+    ```sh
+    docker build -f Dockerfile.prod -t e-library:prod .
+    ```
+2.  **Launch the production stack:**
+    This command uses the production compose file to start the services using the image you just built.
+    ```sh
+    docker compose -f docker-compose.prod.yml up -d
+    ```
+3.  **Run database migrations:**
+    Just like in development, you need to apply the database schema to the new production database.
+    ```sh
+    docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+    ```

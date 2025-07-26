@@ -1,28 +1,30 @@
 from fastapi import FastAPI
-from src.db import models
-from src.db.models import Book, User
-from src.db.main import init_db
 from contextlib import asynccontextmanager
 from src.auth.routes import auth_router
 from src.books.routes import book_router
 from src.admin.route import admin_router
+from fastapi.responses import RedirectResponse
 
 @asynccontextmanager
 async def life_span(app: FastAPI):
-    print("server is starting....")
-    try:
-        # await init_db()
-        print("Database Initialization complete.")
-    except Exception as e:
-        print(f"Error Initalizing database: {e}")
+    print("Server is starting up...")
+    # In a production environment with Alembic, we don't want the app to create tables.
+    # The `init_db()` 
+    # This is the perfect place to initialize other resources like connection pools.
     yield
-    print("Server has been stopped....")
+    print("Server is shutting down...")
 
 version = "v1"
 
-app = FastAPI()
+app = FastAPI(lifespan=life_span)
 
+@app.get("/", include_in_schema=False)
+async def root():
+    """
+    Redirects the root URL to the API documentation.
+    """
+    return RedirectResponse(url="/docs")
 
-app.include_router(auth_router, prefix="/api/{version}/auth", tags=['auth'])
-app.include_router(book_router, prefix="/api/{version}/books", tags=['books'])
-app.include_router(admin_router, prefix="/api/{version}/admin", tags=['admin'])
+app.include_router(auth_router, prefix=f"/api/{version}/auth", tags=['auth'])
+app.include_router(book_router, prefix=f"/api/{version}/books", tags=['books'])
+app.include_router(admin_router, prefix=f"/api/{version}/admin", tags=['admin'])

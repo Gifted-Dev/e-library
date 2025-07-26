@@ -1,0 +1,11 @@
+# This file lists development-specific dependencies.
+# It includes all production dependencies via '-r requirements.txt'
+# and adds tools needed only for local development and testing.
+-r requirements.txt
+
+# Development and testing tools
+fastapi-cli==0.0.8
+fastapi-cloud-cli==0.1.4
+watchfiles==1.1.0
+pytest
+pytest-asyncio
