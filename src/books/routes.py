@@ -5,8 +5,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.auth.services import UserService
 from src.db.main import get_session
 from src.auth.utils import create_download_token, decode_token
-from src.books.schemas import BookCreateModel, BookSearchModel, BookUpdateModel
-from src.books.services import BookService
+from src.books.schemas import BookCreateModel, BookSearchModel, BookUpdateModel, DownloadLogPublicModel
+from src.books.services import BookService, delete_book_file_from_storage
 from src.auth.dependencies import AccessTokenBearer, RoleChecker, ensure_user_is_verified
 from src.core.storage import get_storage_service 
 from src.core.email import create_message, send_email
@@ -14,7 +14,6 @@ from datetime import datetime
 from typing import Optional, List
 from src.config import Config
 import os
-import aiofiles
 from uuid import UUID
 
 
@@ -42,10 +41,7 @@ async def upload_file(title: str = Form(...),
                       file: UploadFile = File(...)):
     
     # |--- Check if uploaded file is a valid type ---|
-    valid_extension = is_valid_extension(file.filename)
-    
-    # |--- Raise Exception if file is not valid ---|
-    if not valid_extension:
+    if not file.filename or not is_valid_extension(file.filename):
         raise HTTPException(
             status_code=400, 
             detail="Unsupported file format. Only PDF, EPUB, and MOBI are allowed.")
@@ -136,7 +132,7 @@ async def request_download_link(book_uid: str, background_tasks: BackgroundTasks
     
     storage_service = get_storage_service()
     # |--- Confirm if file exists on the server ----|
-    if not await storage_service.file_exists(book.file_url):
+    if not book.file_url or not await storage_service.file_exists(book.file_url):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Book file not found on the server"
@@ -151,15 +147,17 @@ async def request_download_link(book_uid: str, background_tasks: BackgroundTasks
     )
     
     # |--- Construct a secure URL with the token as a query parameter ----|
-    file_url = f"{Config.DOMAIN}/books/download?token={book_request_token}"
+    download_url = f"{Config.DOMAIN}/books/download?token={book_request_token}"
     
     message = create_message(
         subject=f"Download Link for {book.title}",
         recipients=[user_email],
-        template_body={"download_url": file_url, "book_title": book.title}
+        template_body={"download_url": download_url, "book_title": book.title}
     )
     
-    await send_email(background_tasks, message, template_name="download_link.html")
+    # Using await on send_email directly would block. By adding it as a background task,
+    # we can send the 202 response immediately.
+    background_tasks.add_task(send_email, message, template_name="download_link.html")
         
     return {"message" : "A download link will be sent to your email shortly"}
     
@@ -184,13 +182,20 @@ async def download_book(token: str, session: AsyncSession = Depends(get_session)
     book = await book_service.get_book(book_uid, session)
 
     storage_service = get_storage_service()
-    if not await storage_service.file_exists(book.file_url):
+    if not book.file_url or not await storage_service.file_exists(book.file_url):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Book file not found on the server. It may have been moved or deleted."
         )
 
-    return FileResponse(path=book.file_url, filename=book.title, media_type='application/octet-stream')
+    # Assuming storage service returns a local path for FileResponse
+    # If it's a remote URL, you might need to stream it differently.
+    local_file_path = await storage_service.get_file_path(book.file_url)
+    
+    # Extract original filename from the URL for the download prompt
+    original_filename = os.path.basename(book.file_url)
+
+    return FileResponse(path=local_file_path, filename=original_filename, media_type='application/octet-stream')
 
 
 # |------- Route to Update Book ----------|
@@ -203,7 +208,16 @@ async def update_book(book_uid: str, book_data: BookUpdateModel, session: AsyncS
 
 # |---- Route to delete book ---|
 @book_router.delete("/delete-book", dependencies=[Depends(admin_checker)], status_code=status.HTTP_204_NO_CONTENT)
-async def delete_book(book_uid:str, session:AsyncSession = Depends(get_session)) -> None:
-    await book_service.delete_book(book_uid, session)
-    
-    return None
+async def delete_book(book_uid:str, background_tasks: BackgroundTasks, session:AsyncSession = Depends(get_session)) -> None:
+    # The service method now returns the file_url directly after deleting the DB record.
+    file_url_to_delete = await book_service.delete_book_record(book_uid, session)
+
+    # The slow/unreliable part runs in the background after the response has been sent.
+    background_tasks.add_task(delete_book_file_from_storage, file_url_to_delete)
+
+
+# |---- Route to get download logs ---|
+@book_router.get("/download-logs", response_model=List[DownloadLogPublicModel], dependencies=[Depends(admin_checker)])
+async def get_download_logs(skip: int = 0, limit: int = 20, session: AsyncSession = Depends(get_session)):
+    logs = await book_service.get_download_logs(session, skip, limit)
+    return logs
