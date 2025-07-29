@@ -1,6 +1,6 @@
 from src.db.models import User, Downloads
 from src.auth.schemas import UserCreateModel, UserLoginModel, UserUpdateModel
-from src.core.email import create_message, send_email
+from src.core.email import create_template_message, send_email
 from src.config import Config
 from src.auth.utils import (
     generate_password_hash, 
@@ -142,7 +142,7 @@ class UserService:
         
         verification_url = f"{Config.DOMAIN}/auth/verify-email?token={verification_token}"
 
-        message = create_message(
+        message = create_template_message(
             subject="Please verify your Email",
             recipients=[email],
             template_body={"verification_url": verification_url, "first_name": user.first_name}

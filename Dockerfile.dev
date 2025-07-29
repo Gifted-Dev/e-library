@@ -1,0 +1,27 @@
+# This Dockerfile is for development purposes.
+# It includes development dependencies and uses the --reload flag for hot-reloading.
+
+# Start with a standard base image
+FROM python:3.11
+
+# Set a neutral working directory.
+WORKDIR /app
+
+# Set environment variables to prevent writing .pyc files
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Copy only the requirements files first to leverage Docker's layer caching.
+COPY requirements*.txt ./
+
+# Install all necessary dependencies, including development ones.
+RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements-dev.txt
+
+# Copy the rest of the application code.
+COPY . .
+
+# Expose the application port
+EXPOSE 8000
+
+# Run the development server with hot-reloading.
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

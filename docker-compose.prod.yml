@@ -1,27 +1,58 @@
-version: "3.8"
+# This file is for production deployments.
+# It uses the optimized production Dockerfile and does not mount source code.
+version: '3.8'
 
 services:
-  backend:
-    # Use the pre-built production image
-    image: e-library:prod
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=${DATABASE_USER}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+      - POSTGRES_DB=${DATABASE_NAME}
+    # No ports exposed to the host machine for security.
+    # Services connect over the internal Docker network.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: always
+
+  redis:
+    image: redis:7-alpine
+    # No ports exposed to the host machine.
+    restart: always
+
+  web:
+    build:
+      context: .
+      # Use the production Dockerfile
+      dockerfile: Dockerfile
+    # No volumes for source code; the code is baked into the image.
     ports:
       - "8000:8000"
-    env_file: .env
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}
+    env_file:
+      - .env
     depends_on:
-      - db
-
-  db:
-    image: postgres:15
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: always
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A src.worker.celery_app worker --loglevel=info
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - db
+    restart: always
 
 volumes:
-  pgdata:
+  postgres_data:

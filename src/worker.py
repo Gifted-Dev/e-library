@@ -11,36 +11,27 @@ celery_app = Celery(
     backend=Config.REDIS_URL
 )
 
+# Celery 5+ has native support for async tasks.
+# By defining the task function with `async def`, Celery's event loop
+# will run it correctly without needing `asyncio.run()`.
+
 @celery_app.task
-def delete_book_file_from_storage_task(file_url: Optional[str]) -> None:
-    
+async def delete_book_file_from_storage_task(file_url: Optional[str]) -> None:
     """
     A Celery task to delete a file from storage.
-    Celery tasks are synchronous, but our storage code is async.
-    We use asyncio.run() to bridge the gap.
+    This is an async task, allowing efficient I/O operations.
     """
-    
-    async def _delete():
-        if not file_url:
-            return
-        storage_service = get_storage_service()
-        
-        if await storage_service.file_exists(file_url):
-            await storage_service.delete_file(file_url)
-            
-    asyncio.run(_delete())
+    if not file_url:
+        return
+    storage_service = get_storage_service()
+    if await storage_service.file_exists(file_url):
+        await storage_service.delete_file(file_url)
     
 @celery_app.task(name="send_email")
-def send_email_task(message_data: Dict[str, Any], template_name: str) -> None:
+async def send_email_task(message_data: Dict[str, Any], template_name: str) -> None:
     """
-    Creates a message object from a dictionary and sends the email.
+    Creates a message object from a dictionary and sends the email asynchronously.
     This task runs within a Celery worker, not the main FastAPI process.
     """
-    message = create_template_message(
-        subject=message_data["subject"],
-        recipients=message_data["recipients"],
-        template_body=message_data["template_body"]
-    )
-    
-    # Since send_email is an async function, we must run it in an event loop.
-    asyncio.run(send_email(message, template_name=template_name))
+    message = create_template_message(**message_data)
+    await send_email(message, template_name=template_name)

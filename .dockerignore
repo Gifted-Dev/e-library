@@ -1,15 +1,22 @@
-# Git and environment files
+# This file prevents local development files and sensitive information
+# from being copied into the Docker image.
+
+# Git
 .git
 .gitignore
-.env
 
-# Docker files
-Dockerfile
-Dockerfile.prod
-docker-compose.yml
-docker-compose.prod.yml
-
-# Python specific
+# Python artifacts
 __pycache__/
-.venv/
 *.pyc
+
+# Virtual environments
+venv/
+.venv/
+
+# IDE / Editor specific
+.vscode/
+.idea/
+
+# Environment variables - should be passed in at runtime, not built into the image
+.env
+.env.*
