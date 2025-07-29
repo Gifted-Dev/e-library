@@ -69,16 +69,16 @@ async def upload_file(title: str = Form(...),
 
     # Save file using chosen backend
     storage_service = get_storage_service()
-    filename, file_url, file_size = await storage_service.save_file(file)
+    display_name, file_locator, file_size = await storage_service.save_file(file)
     
     await book_service.save_book(book_data=book_data,
-                                      file_url=file_url,
+                                      file_url=file_locator,
                                       file_size=file_size,
                                       uploaded_by=user_id,
                                       session=session)
 
     return {
-        "message": f"{filename} has been saved",
+        "message": f"{display_name} has been saved",
         "book_title": book_data.title,
         "upload_date" : str(upload_date)
     }
@@ -154,15 +154,14 @@ async def request_download_link(book_uid: UUID,
     base_url = Config.DOMAIN.rstrip('/')
     download_url = f"{base_url}{download_path}?token={book_request_token}"
     
-    message_data = {
-        "subject" : f"Download Link for {book.title}",
-        "recipients" : [user_email],
-        "template_body" : {"download_url": download_url, "book_title": book.title}
-    }
-    
     # Using await on send_email directly would block. By adding it as a background task,
     # we can send the 202 response immediately.
-    send_email_task.delay(message_data=message_data, template_name="download_link.html")
+    send_email_task.delay(
+        subject=f"Download Link for {book.title}",
+        recipients=[user_email],
+        template_body={"download_url": download_url, "book_title": book.title},
+        template_name="download_link.html"
+    )
         
     return {"message" : "A download link will be sent to your email shortly"}
     

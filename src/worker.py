@@ -1,6 +1,6 @@
 import asyncio
 from celery import Celery
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from src.config import Config
 from src.core.email import send_email, create_template_message
 from src.core.storage import get_storage_service
@@ -31,15 +31,15 @@ def delete_book_file_from_storage_task(file_url: Optional[str]) -> None:
     asyncio.run(_delete())
     
 @celery_app.task(name="send_email")
-def send_email_task(message_data: Dict[str, Any], template_name: str) -> None:
+def send_email_task(subject: str, recipients: List[str], template_body: Dict[str, Any], template_name: str) -> None:
     """
     Creates a message object from a dictionary and sends the email.
     This task runs within a Celery worker, not the main FastAPI process.
     """
     message = create_template_message(
-        subject=message_data["subject"],
-        recipients=message_data["recipients"],
-        template_body=message_data["template_body"]
+        subject=subject,
+        recipients=recipients,
+        template_body=template_body
     )
     
     # Since send_email is an async function, we must run it in an event loop.

@@ -1,6 +1,7 @@
 import os
 import io
 import uuid
+from pathlib import Path
 from urllib.parse import urlparse
 import asyncio
 from fastapi import UploadFile, HTTPException
@@ -10,63 +11,69 @@ import aiofiles
 import aioboto3
 from botocore.exceptions import ClientError
 
+# Define a base directory for static files. This makes path resolution robust.
+BASE_STATIC_DIR = Path(__file__).parent.parent / "static"
 
 class LocalStorageService:
-    async def save_file(self, file: UploadFile, folder="src/static/books"):
-        os.makedirs(folder, exist_ok=True)
+    async def save_file(self, file: UploadFile, folder="books"):
+        # Ensure the save directory exists within our base static directory.
+        save_dir = BASE_STATIC_DIR / folder
+        save_dir.mkdir(parents=True, exist_ok=True)
+
         file_id = str(uuid.uuid4())
-        filename = f"{file_id}_{file.filename}"
-        path = os.path.join(folder, filename)
+        unique_filename = f"{file_id}_{file.filename}"
+        full_path = save_dir / unique_filename
 
         # Save the file
-        
         content = await file.read()
         file_size = len(content) / (1024 * 1024)
 
-        async with aiofiles.open(path, "wb") as f:
+        async with aiofiles.open(full_path, "wb") as f:
             await f.write(content)
 
-        return filename, path, file_size
+        # Return the original filename for display, and a portable, URL-like relative path for storage.
+        relative_path = f"/{folder}/{unique_filename}".replace("\\", "/")
+        return file.filename, relative_path, file_size
 
-    async def file_exists(self, file_path: str) -> bool:
-        # This is a robust way to check for file existence asynchronously
-        # without relying on aiofiles.os, which can cause issues in some environments.
-        try:
-            async with aiofiles.open(file_path, mode="r"):
-                pass
-            return True
-        except FileNotFoundError:
-            return False
+    def _resolve_path(self, relative_path: str) -> Path:
+        """Resolves a relative URL path to an absolute filesystem path."""
+        # Remove leading slash and safely join with the base static directory.
+        return BASE_STATIC_DIR / relative_path.lstrip('/')
+
+    async def file_exists(self, relative_path: str) -> bool:
+        full_path = self._resolve_path(relative_path)
+        return os.path.exists(full_path)
     
-    async def delete_file(self, file_url: str):
-        # To avoid the 'aiofiles has no attribute os' error, we can run the
-        # blocking os.remove call in a separate thread using asyncio's executor.
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, os.remove, file_url)
-        
-    async def get_download_response(self, file_path: str):
-        """Returns a FileResponse for a local file."""
-        original_filename = os.path.basename(file_path)
-        return FileResponse(
-            path=file_path,
-            filename=original_filename,
-            media_type='application/octet-stream'
-        )
+    async def delete_file(self, relative_path: str):
+        full_path = self._resolve_path(relative_path)
+        try:
+            # Use a thread pool for the blocking I/O call to avoid stalling the event loop.
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, os.remove, full_path)
+        except FileNotFoundError:
+            # If the file is already gone, we can safely ignore the error.
+            pass
+
+    async def get_download_response(self, relative_path: str):
+        full_path = self._resolve_path(relative_path)
+        # Extract the original filename part for the download header.
+        original_filename = "_".join(full_path.name.split('_')[1:])
+        return FileResponse(path=full_path, filename=original_filename)
 
 
 
 class S3StorageService:
-    async def save_file(self, file: UploadFile, folder="books"):
-        session = aioboto3.Session()
-        
-        
-        async with session.client(
-            "s3",
-            aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
-            region_name=Config.AWS_REGION
-        ) as s3:
+    def __init__(self):
+        self.session = aioboto3.Session()
+        self.bucket_name = Config.AWS_BUCKET_NAME
+        self.s3_config = {
+            "aws_access_key_id": Config.AWS_ACCESS_KEY_ID,
+            "aws_secret_access_key": Config.AWS_SECRET_ACCESS_KEY,
+            "region_name": Config.AWS_REGION
+        }
 
+    async def save_file(self, file: UploadFile, folder="books"):
+        async with self.session.client("s3", **self.s3_config) as s3:
             file_id = str(uuid.uuid4())
             key = f"{folder}/{file_id}_{file.filename}"
             content = await file.read()
@@ -80,23 +87,18 @@ class S3StorageService:
             )
 
             file_url = f"https://{Config.AWS_BUCKET_NAME}.s3.amazonaws.com/{key}"
-            return key, file_url, file_size
+            # Return the original filename for display, and the full S3 URL for storage.
+            return file.filename, file_url, file_size
 
     async def file_exists(self, file_url: str) -> bool:
-        session = aioboto3.Session()
-        bucket_name = Config.AWS_BUCKET_NAME
-        
         # Reliably extract the object key (e.g., "books/file.pdf") from the full URL.
         parsed_url = urlparse(file_url)
         key = parsed_url.path.lstrip('/')
 
-        async with session.client("s3",
-                                  aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
-                                  aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
-                                  region_name=Config.AWS_REGION) as s3:
+        async with self.session.client("s3", **self.s3_config) as s3:
             try:
                 # head_object is a lightweight way to check for existence.
-                await s3.head_object(Bucket=bucket_name, Key=key)
+                await s3.head_object(Bucket=self.bucket_name, Key=key)
                 return True
             except ClientError as e:
                 # If the specific error code is 404, we know the file doesn't exist.
@@ -106,37 +108,24 @@ class S3StorageService:
                 raise
             
     async def delete_file(self, file_url: str):
-        session = aioboto3.Session()
-        bucket_name = Config.AWS_BUCKET_NAME
-        
         # Reliably extract the object key (e.g., "books/file.pdf") from the full URL.
         parsed_url = urlparse(file_url)
         key = parsed_url.path.lstrip('/')
         
-        
-        
-        async with session.client("s3",
-                                  aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
-                                  aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
-                                  region_name=Config.AWS_REGION) as s3:
+        async with self.session.client("s3", **self.s3_config) as s3:
             
-            await s3.delete_object(Bucket=bucket_name, Key=key)
+            await s3.delete_object(Bucket=self.bucket_name, Key=key)
             
     async def get_download_response(self, file_url: str):
         """Generates a pre-signed URL for S3 and returns a RedirectResponse."""
-        session = aioboto3.Session()
-        bucket_name = Config.AWS_BUCKET_NAME
         parsed_url = urlparse(file_url)
         key = parsed_url.path.lstrip('/')
 
-        async with session.client("s3",
-                                  aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
-                                  aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
-                                  region_name=Config.AWS_REGION) as s3:
+        async with self.session.client("s3", **self.s3_config) as s3:
             try:
                 presigned_url = await s3.generate_presigned_url(
                     'get_object',
-                    Params={'Bucket': bucket_name, 'Key': key},
+                    Params={'Bucket': self.bucket_name, 'Key': key},
                     ExpiresIn=300  # URL is valid for 5 minutes
                 )
                 return RedirectResponse(url=presigned_url)
