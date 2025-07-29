@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     VALIDATE_CERTS: bool = True
 
      # --- App Config ---
-    ENVIRONMENT: str = "p"
+    ENVIRONMENT: str = "development"
     DOMAIN: str
     CLIENT_DOMAIN: str
 

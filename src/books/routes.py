@@ -16,7 +16,6 @@ import os
 from uuid import UUID
 
 
-from src import version
 book_router = APIRouter()
 role_checker = RoleChecker(['admin', 'user', 'superadmin'])
 

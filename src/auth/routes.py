@@ -25,7 +25,7 @@ from src.db.redis import add_jti_to_blocklist
 from src.config import Config
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
-from src.core.email import create_message, send_email
+from src.core.email import create_template_message, send_email
 from src.config import Config
 from src.auth.dependencies import (
     RefreshTokenBearer,
@@ -219,14 +219,14 @@ async def forgot_password(user_data: ForgotPasswordSchema, background_tasks: Bac
     # This link should point to your frontend application.
     reset_link = f"{Config.DOMAIN}/reset-password?token={password_reset_token}"
     
-    message = create_message(
+    message = create_template_message(
         subject="Password Reset Request",
         recipients=[email],
         template_body={"reset_link": reset_link, "first_name": user.first_name},
     )
     
     # 4. Use background task to send the message
-    await send_email(background_tasks, message, template_name="reset_password.html")
+    await send_email(message, template_name="reset_password.html")
     
     return {"message": "If an account with email exists, a password reset link has been sent"}
 
