@@ -7,6 +7,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
 from src.auth.services import UserService
 from src.db.models import User
+from src.db.redis import token_in_blocklist
 from typing import List
 
 
@@ -20,6 +21,15 @@ class TokenBearer(HTTPBearer):
 
         if not token_data:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
+        
+        if await token_in_blocklist(token_data['jti']):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error":"This token is invalid or has been revoked",
+                    "resolution": "Please get new token"
+                }
+            )
 
         self.verify_token_data(token_data)  # 🔥 key part for subclassing
         return token_data

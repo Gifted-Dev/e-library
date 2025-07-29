@@ -1,15 +1,14 @@
-from fastapi import APIRouter, status, Depends, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, status, Depends, UploadFile, File, Form, Request
 from fastapi.exceptions import HTTPException
-from fastapi.responses import FileResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
+from src.worker import send_email_task, delete_book_file_from_storage_task
 from src.auth.services import UserService
 from src.db.main import get_session
 from src.auth.utils import create_download_token, decode_token
 from src.books.schemas import BookCreateModel, BookSearchModel, BookUpdateModel, DownloadLogPublicModel
-from src.books.services import BookService, delete_book_file_from_storage
+from src.books.services import BookService
 from src.auth.dependencies import AccessTokenBearer, RoleChecker, ensure_user_is_verified
 from src.core.storage import get_storage_service 
-from src.core.email import create_message, send_email
 from datetime import datetime
 from typing import Optional, List
 from src.config import Config
@@ -17,6 +16,7 @@ import os
 from uuid import UUID
 
 
+from src import version
 book_router = APIRouter()
 role_checker = RoleChecker(['admin', 'user', 'superadmin'])
 
@@ -92,8 +92,8 @@ async def get_all_books(skip: int = 0, limit: int = 20, session: AsyncSession = 
     return all_books
 
 # |---- Get a particular book ----|
-@book_router.get("/get_book", dependencies=[Depends(role_checker)], response_model=BookSearchModel)
-async def get_book(book_uid: str, session: AsyncSession = Depends(get_session)):
+@book_router.get("/{book_uid}", dependencies=[Depends(role_checker)], response_model=BookSearchModel)
+async def get_book(book_uid: UUID, session: AsyncSession = Depends(get_session)):
     book = await book_service.get_book(book_uid, session)
     
     return book
@@ -117,12 +117,13 @@ async def search_books(title: Optional[str] = None, author: Optional[str] = None
 @book_router.post("/{book_uid}/request-download",
                     dependencies=[Depends(role_checker), Depends(ensure_user_is_verified)],
                     status_code=status.HTTP_202_ACCEPTED)
-async def request_download_link(book_uid: str, background_tasks: BackgroundTasks,
+async def request_download_link(book_uid: UUID,
+                        request: Request,
                         token_details: dict = Depends(AccessTokenBearer()),
                         session: AsyncSession = Depends(get_session)):
     
     # |--- Get the User ID from the AccessTokenBearer() ---|
-    user_uid = token_details.get('user')['user_uid'] 
+    user_uid = UUID(token_details.get('user')['user_uid'])
     
     # |---- Get the User Email from Access Token ----|
     user_email = token_details.get('user')['email']
@@ -143,26 +144,30 @@ async def request_download_link(book_uid: str, background_tasks: BackgroundTasks
     book_request_token = create_download_token(
         user_data={"user_uid" : user_uid,
                    "email" : user_email},
-        book_uid=book_uid
+        book_uid=str(book_uid) # Convert UUID to string for the token
     )
     
-    # |--- Construct a secure URL with the token as a query parameter ----|
-    download_url = f"{Config.DOMAIN}/books/download?token={book_request_token}"
+    # Using request.url_for is a robust way to build URLs. It avoids issues with
+    # trailing slashes in the domain and automatically resolves the correct path
+    # based on the route's name.
+    download_path = request.url_for('download_book')
+    base_url = Config.DOMAIN.rstrip('/')
+    download_url = f"{base_url}{download_path}?token={book_request_token}"
     
-    message = create_message(
-        subject=f"Download Link for {book.title}",
-        recipients=[user_email],
-        template_body={"download_url": download_url, "book_title": book.title}
-    )
+    message_data = {
+        "subject" : f"Download Link for {book.title}",
+        "recipients" : [user_email],
+        "template_body" : {"download_url": download_url, "book_title": book.title}
+    }
     
     # Using await on send_email directly would block. By adding it as a background task,
     # we can send the 202 response immediately.
-    background_tasks.add_task(send_email, message, template_name="download_link.html")
+    send_email_task.delay(message_data=message_data, template_name="download_link.html")
         
     return {"message" : "A download link will be sent to your email shortly"}
     
 # |---- Route to download file ----|
-@book_router.get("/download")
+@book_router.get("/download", name="download_book")
 async def download_book(token: str, session: AsyncSession = Depends(get_session)):
     token_data = decode_token(token)
     if not token_data:
@@ -179,7 +184,7 @@ async def download_book(token: str, session: AsyncSession = Depends(get_session)
             detail="Token is missing required information."
         )
 
-    book = await book_service.get_book(book_uid, session)
+    book = await book_service.get_book(UUID(book_uid), session)
 
     storage_service = get_storage_service()
     if not book.file_url or not await storage_service.file_exists(book.file_url):
@@ -188,32 +193,27 @@ async def download_book(token: str, session: AsyncSession = Depends(get_session)
             detail="Book file not found on the server. It may have been moved or deleted."
         )
 
-    # Assuming storage service returns a local path for FileResponse
-    # If it's a remote URL, you might need to stream it differently.
-    local_file_path = await storage_service.get_file_path(book.file_url)
-    
-    # Extract original filename from the URL for the download prompt
-    original_filename = os.path.basename(book.file_url)
-
-    return FileResponse(path=local_file_path, filename=original_filename, media_type='application/octet-stream')
+    # The storage service now returns the appropriate response directly,
+    # handling both local files (FileResponse) and S3 redirects (RedirectResponse).
+    return await storage_service.get_download_response(book.file_url)
 
 
 # |------- Route to Update Book ----------|
-@book_router.patch("/{book_uid}/update", response_model=BookSearchModel, dependencies=[Depends(admin_checker)])
-async def update_book(book_uid: str, book_data: BookUpdateModel, session: AsyncSession = Depends(get_session)):
+@book_router.patch("/{book_uid}", response_model=BookSearchModel, dependencies=[Depends(admin_checker)])
+async def update_book(book_uid: UUID, book_data: BookUpdateModel, session: AsyncSession = Depends(get_session)):
     # |---- Update Book Using the Book Service -----|
     book = await book_service.update_book(book_uid, book_data, session)
 
     return book
 
 # |---- Route to delete book ---|
-@book_router.delete("/delete-book", dependencies=[Depends(admin_checker)], status_code=status.HTTP_204_NO_CONTENT)
-async def delete_book(book_uid:str, background_tasks: BackgroundTasks, session:AsyncSession = Depends(get_session)) -> None:
+@book_router.delete("/{book_uid}", dependencies=[Depends(admin_checker)], status_code=status.HTTP_204_NO_CONTENT)
+async def delete_book(book_uid: UUID, session: AsyncSession = Depends(get_session)) -> None:
     # The service method now returns the file_url directly after deleting the DB record.
     file_url_to_delete = await book_service.delete_book_record(book_uid, session)
-
-    # The slow/unreliable part runs in the background after the response has been sent.
-    background_tasks.add_task(delete_book_file_from_storage, file_url_to_delete)
+    
+    if file_url_to_delete:
+        delete_book_file_from_storage_task.delay(file_url_to_delete)
 
 
 # |---- Route to get download logs ---|

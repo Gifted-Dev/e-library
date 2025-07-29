@@ -141,17 +141,7 @@ class UserService:
         )
         
         verification_url = f"{Config.DOMAIN}/auth/verify-email?token={verification_token}"
-        
-        # Create a MessageSchema object directly to use templates.
-        # message = MessageSchema(
-        #     subject="Please verify your Email",
-        #     recipients=[email],
-        #     # Pass data to the template using `template_body`.
-        #     # The keys must match the placeholders in your .html file (e.g., {{ verification_url }}).
-        #     template_body={"verification_url": verification_url, "first_name": user.first_name},
-        #     subtype=MessageType.html
-        # )
-        
+
         message = create_message(
             subject="Please verify your Email",
             recipients=[email],

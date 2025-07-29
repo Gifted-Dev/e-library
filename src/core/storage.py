@@ -3,15 +3,12 @@ import io
 import uuid
 from urllib.parse import urlparse
 import asyncio
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
+from fastapi.responses import FileResponse, RedirectResponse
 from src.config import Config
 import aiofiles
 import aioboto3
 from botocore.exceptions import ClientError
-
-
-
-STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")
 
 
 class LocalStorageService:
@@ -46,6 +43,16 @@ class LocalStorageService:
         # blocking os.remove call in a separate thread using asyncio's executor.
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, os.remove, file_url)
+        
+    async def get_download_response(self, file_path: str):
+        """Returns a FileResponse for a local file."""
+        original_filename = os.path.basename(file_path)
+        return FileResponse(
+            path=file_path,
+            filename=original_filename,
+            media_type='application/octet-stream'
+        )
+
 
 
 class S3StorageService:
@@ -65,9 +72,6 @@ class S3StorageService:
             content = await file.read()
             file_size = len(content) / (1024 * 1024)
 
-
-            # await s3.upload_fileobj(io.BytesIO(content), os.getenv("AWS_BUCKET_NAME"), key) not more in use
-               
             await s3.put_object(
                 Body=content,
                 Bucket=Config.AWS_BUCKET_NAME,
@@ -117,10 +121,31 @@ class S3StorageService:
                                   region_name=Config.AWS_REGION) as s3:
             
             await s3.delete_object(Bucket=bucket_name, Key=key)
+            
+    async def get_download_response(self, file_url: str):
+        """Generates a pre-signed URL for S3 and returns a RedirectResponse."""
+        session = aioboto3.Session()
+        bucket_name = Config.AWS_BUCKET_NAME
+        parsed_url = urlparse(file_url)
+        key = parsed_url.path.lstrip('/')
+
+        async with session.client("s3",
+                                  aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
+                                  aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
+                                  region_name=Config.AWS_REGION) as s3:
+            try:
+                presigned_url = await s3.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': bucket_name, 'Key': key},
+                    ExpiresIn=300  # URL is valid for 5 minutes
+                )
+                return RedirectResponse(url=presigned_url)
+            except ClientError:
+                raise HTTPException(status_code=500, detail="Could not generate download link.")
 
 
 # 👇 Choose the right storage handler dynamically
 def get_storage_service():
-    if STORAGE_BACKEND == "s3":
+    if Config.STORAGE_BACKEND == "s3":
         return S3StorageService()
     return LocalStorageService()

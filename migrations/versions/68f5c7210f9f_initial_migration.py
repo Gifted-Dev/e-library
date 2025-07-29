@@ -31,7 +31,7 @@ def upgrade() -> None:
     sa.Column('is_verified', sa.Boolean(), nullable=False),
     sa.Column('email', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('password_hash', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('created_at', postgresql.TIMESTAMP(), nullable=True),
+    sa.Column('created_at', postgresql.TIMESTAMP(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('uid')
     )
     op.create_table('books',

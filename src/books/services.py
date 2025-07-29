@@ -63,12 +63,9 @@ class BookService:
         # show all the results
         return result.all()
     
-    async def get_book(self, book_uid:str, session:AsyncSession):
-        # To get a book by its UID
-        uid_update = UUID(book_uid)
-        
+    async def get_book(self, book_uid: UUID, session:AsyncSession):
         # |--- Run statement to check if book exists ---|
-        statement = select(Book).where(Book.uid == uid_update)
+        statement = select(Book).where(Book.uid == book_uid)
         
         # |--- Execute Statement and save in variable "result"---|
         result = await session.exec(statement)
@@ -106,7 +103,7 @@ class BookService:
         return books
     
     
-    async def update_book(self, book_uid: str, book_data: BookUpdateModel, session:AsyncSession):
+    async def update_book(self, book_uid: UUID, book_data: BookUpdateModel, session:AsyncSession):
         # |---- Get the book using the book_uid ---|
         # `get_book` is an async function and must be awaited.
         book = await self.get_book(book_uid, session)
@@ -125,35 +122,22 @@ class BookService:
         return book
         
     
-    async def delete_book(self, book_uid: str, session:AsyncSession) -> None:
+    async def delete_book_record(self, book_uid: UUID, session:AsyncSession) -> Optional[str]:
         # |---- select book by uid ----|
         book = await self.get_book(book_uid, session)
         
-        storage_service = get_storage_service()
-        # |---- Delete Book ----|
-        # Use the storage abstraction to check for file existence
-        if book.file_url and await storage_service.file_exists(book.file_url):
-            try:
-                await storage_service.delete_file(book.file_url)
-            except Exception as e: # Raise exception error if failed to delete.
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to delete file:{e}"
-                )
+        # This is the critical fix: get the URL from the instance, not the class.
+        file_url_to_delete = book.file_url
                 
         # |---- Commit Changes ----|
-        await session.delete(book)
+        await session.delete(book) # delete the book
         await session.commit()
         
-        return None
+        return file_url_to_delete
     
-    async def create_download_record(self, book_uid: str, user_uid: str, session: AsyncSession):
-        # Convert string UIDs to UUID objects, as the database model expects.
-        book_id_uuid = UUID(book_uid)
-        user_id_uuid = UUID(user_uid)
-        
+    async def create_download_record(self, book_uid: UUID, user_uid: UUID, session: AsyncSession):
         # Create a new download record using keyword arguments for clarity and safety.
-        new_download = Downloads(book_id=book_id_uuid, user_id=user_id_uuid)
+        new_download = Downloads(book_id=book_uid, user_id=user_uid)
         session.add(new_download)
         await session.commit()
         # Refresh the object to get default values from the DB, like the timestamp.

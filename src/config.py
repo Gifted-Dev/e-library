@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     DATABASE_URL : str
     JWT_SECRET: str
     JWT_ALGORITHM: str
+    REDIS_HOST: str
+    REDIS_PORT: str
+    REDIS_URL: str = "redis://localhost:6379/0"
     STORAGE_BACKEND: str
     SUPERADMIN_EMAILS_RAW: str
     MAIL_USERNAME: str

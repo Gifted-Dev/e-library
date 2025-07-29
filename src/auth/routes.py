@@ -21,6 +21,7 @@ from src.auth.schemas import (UserCreateModel,
 from src.auth.utils import create_verification_token, create_password_reset_token, verify_password, generate_password_hash
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
+from src.db.redis import add_jti_to_blocklist
 from src.config import Config
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
@@ -28,6 +29,7 @@ from src.core.email import create_message, send_email
 from src.config import Config
 from src.auth.dependencies import (
     RefreshTokenBearer,
+    AccessTokenBearer,
     get_current_user,
     RoleChecker,
     User
@@ -303,3 +305,16 @@ async def get_downloads(current_user : User = Depends(get_current_user),
                         session: AsyncSession = Depends(get_session), 
                         skip: int = 0, limit: int = 20):
    return await user_service.get_user_download_history(current_user.uid, session, skip, limit)
+
+@auth_router.get('/logout')
+async def revoke_token(token_details: dict = Depends(AccessTokenBearer())):
+    jti = token_details['jti']
+    
+    await add_jti_to_blocklist(jti)
+    
+    return JSONResponse(
+        content={
+            "message": "Logged Out Successfully"
+        },
+        status_code=status.HTTP_200_OK  
+        )
