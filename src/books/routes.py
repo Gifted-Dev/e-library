@@ -96,7 +96,7 @@ async def get_all_books(skip: int = 0, limit: int = 20, session: AsyncSession = 
     return all_books
 
 # |---- Get a particular book ----|
-@book_router.get("/get_book", dependencies=[Depends(role_checker)], response_model=BookSearchModel)
+@book_router.get("/get_book/{book_uid}", dependencies=[Depends(role_checker)], response_model=BookSearchModel)
 async def get_book(book_uid: str, session: AsyncSession = Depends(get_session)):
     book = await book_service.get_book(book_uid, session)
     
@@ -202,7 +202,7 @@ async def update_book(book_uid: str, book_data: BookUpdateModel, session: AsyncS
     return book
 
 # |---- Route to delete book ---|
-@book_router.delete("/delete-book", dependencies=[Depends(admin_checker)], status_code=status.HTTP_204_NO_CONTENT)
+@book_router.delete("/book/{book_uid}", dependencies=[Depends(admin_checker)], status_code=status.HTTP_204_NO_CONTENT)
 async def delete_book(book_uid:str, session:AsyncSession = Depends(get_session)) -> None:
     await book_service.delete_book(book_uid, session)
     
