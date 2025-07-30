@@ -1,5 +1,9 @@
 # 📚 E-Library Management System
 
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A modern FastAPI-based e-library management system with JWT authentication, book management, and Redis-powered secure logout functionality.
 
 ## 🚀 Quick Start
@@ -123,7 +127,7 @@ docker run -p 8000:8000 elibrary
 
 ## 📄 License
 
-MIT License - see LICENSE file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🤝 Contributing
 
