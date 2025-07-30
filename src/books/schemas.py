@@ -8,8 +8,7 @@ class BookCreateModel(BaseModel):
     title : str
     author : str
     description : str
-    upload_date: datetime
-    uploaded_by: Optional[uuid.UUID]
+    uploaded_by: Optional[uuid.UUID] = None
     
 class BookUpdateModel(BaseModel):
     # Add a default value of None to make these fields truly optional in the request body.

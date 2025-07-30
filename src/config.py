@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     USE_CREDENTIALS: bool = True
     VALIDATE_CERTS: bool = True
 
-     # --- App Config ---
-    ENVIRONMENT: str = "p"
+    # --- App Config ---
+    ENVIRONMENT: str = "production"
     DOMAIN: str
     CLIENT_DOMAIN: str
 
@@ -30,7 +30,14 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str
     AWS_REGION: str
     AWS_BUCKET_NAME: str
-    
+
+    # Redis Configuration
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_PASSWORD: str = ""
+    REDIS_URL: str = ""
+
     @property
     def SUPERADMIN_EMAILS(self) -> List[str]:
         return [email.strip() for email in self.SUPERADMIN_EMAILS_RAW.split(",")]

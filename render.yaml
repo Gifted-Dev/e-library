@@ -1,0 +1,27 @@
+services:
+  # FastAPI Web Service
+  - type: web
+    name: elibrary-api
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: STORAGE_BACKEND
+        value: local
+
+  # PostgreSQL Database
+  - type: pserv
+    name: elibrary-postgres
+    plan: free
+    databaseName: elibrary
+    databaseUser: elibrary_user
+
+  # Redis for JWT blocklist
+  - type: redis
+    name: elibrary-redis
+    plan: free

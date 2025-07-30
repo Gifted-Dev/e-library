@@ -39,13 +39,18 @@ class ForgotPasswordSchema(BaseModel):
     
 class PasswordChangeSchema(BaseModel):
     old_password: str
-    new_password: str
+    new_password: str = Field(min_length=8, description="New password must be at least 8 characters long")
     
 class ResetPasswordSchema(BaseModel):
-    password: str
+    password: str = Field(min_length=8, description="Password must be at least 8 characters long")
+    confirm_password: str = Field(min_length=8, description="Confirm password must be at least 8 characters long")
     
 class UserDownloadHistoryModel(BaseModel):
     timestamp: datetime
     book: BookInDownloadLog
-    
+
     model_config = ConfigDict(from_attributes=True)
+
+
+class LogoutSchema(BaseModel):
+    refresh_token: Optional[str] = Field(None, description="Refresh token to invalidate")

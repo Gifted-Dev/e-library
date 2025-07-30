@@ -10,28 +10,37 @@
 
 from fastapi import APIRouter, status, Depends, BackgroundTasks
 from src.auth.services import UserService
-from src.auth.schemas import (UserCreateModel, 
-                              UserPublicModel, 
-                              UserLoginModel, 
-                              UserUpdateModel, 
+from src.auth.schemas import (UserCreateModel,
+                              UserPublicModel,
+                              UserLoginModel,
+                              UserUpdateModel,
                               UserDownloadHistoryModel,
                               ForgotPasswordSchema,
                               ResetPasswordSchema,
-                              PasswordChangeSchema)
+                              PasswordChangeSchema,
+                              LogoutSchema)
 from src.auth.utils import create_verification_token, create_password_reset_token, verify_password, generate_password_hash
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
 from src.config import Config
-from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import HTTPException
 from src.core.email import create_message, send_email
-from src.config import Config
+from src.core.exceptions import (
+    UserAlreadyExistsError,
+    InvalidTokenError,
+    UserNotFoundError,
+    ValidationError,
+    InvalidCredentialsError
+)
 from src.auth.dependencies import (
     RefreshTokenBearer,
+    AccessTokenBearer,
     get_current_user,
     RoleChecker,
     User
 )
+
 from fastapi_mail import MessageType
 from src.auth.utils import create_access_token, decode_token
 from datetime import datetime
@@ -44,100 +53,61 @@ role_checker = RoleChecker(['user', 'admin', 'superadmin'])
 
 
 @auth_router.post("/signup", response_model=UserPublicModel, status_code=status.HTTP_201_CREATED)
-async def register_user(user_data: UserCreateModel, background_tasks:BackgroundTasks, session:AsyncSession = Depends(get_session)):
-    
-    # --- 1. Check for Existing User ---
-    # To prevent duplicate accounts, we first check if a user with the provided email already exists.
+async def register_user(user_data: UserCreateModel, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
+    """
+    Register a new user account.
 
-# |---- Check if user exists before creating user ----|
-    
-    # get user email
+    Creates a new user with email verification and automatic superadmin assignment
+    if the email is in the configured superadmin list.
+    """
     email = user_data.email
-    
-    # check if email exists
-    user_exists = await user_service.get_user_by_email(email, session)
 
-    
-    # return exception error if user exists
+    user_exists = await user_service.get_user_by_email(email, session)
     if user_exists:
-        raise HTTPException(
-            status_code = status.HTTP_403_FORBIDDEN,
-            detail="User with email already exists"
-        )
-    
-    # --- 2. Create the New User ---
-    # If the email is unique, we proceed to create the user record in the database.
-    # The user service handles password hashing and initial role assignment.
-    #create the user
+        raise UserAlreadyExistsError(email)
+
     new_user = await user_service.create_user(user_data, session)
-    
-    
     await user_service.verification_logic(email, new_user, background_tasks)
-    
-    
-    # --- 4. Handle Superadmin Promotion (Optional) ---
-    # If the new user's email is in our list of designated superadmins, we elevate their role.
-    superadmin_emails = Config.SUPERADMIN_EMAILS
-    
-    # |---- Assign superadmin role to user ----|
-    if email in superadmin_emails:
-        new_user.role = "superadmin"
-        await session.commit()
-    
-    # return the user
+
     return new_user
 
 @auth_router.get("/verify-email", status_code=status.HTTP_200_OK)
-async def verify_email(token:str, session:AsyncSession = Depends(get_session)):
-    # --- 1. Decode and Validate the Token ---
-    # Decode token
+async def verify_email(token: str, session: AsyncSession = Depends(get_session)):
+    """
+    Verify user email address using verification token.
+
+    Decodes the verification token and marks the user as verified.
+    """
     token_data = decode_token(token)
-    
-    # check if token is valid
     if not token_data:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired verification token"
-        )
-        
-    # --- 2. Find the Corresponding User ---
-    # If the token is valid, we extract the user's email from its payload.
+        raise InvalidTokenError("Invalid or expired verification token")
+
     email = token_data["user"]["email"]
-    
-    # get the user
     user = await user_service.get_user_by_email(email, session)
-    
+
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="This user's email is not found"
-        )
-    
-    # --- 3. Update User's Verification Status ---
-    # update user verification status
+        raise UserNotFoundError("This user's email is not found")
+
     user.is_verified = True
-    
-    # --- 4. Commit and Refresh ---
-    # `session.commit()` saves the change (is_verified = True) to the database.
     await session.commit()
-    # `session.refresh(user)` updates our 'user' object in Python with the latest data
-    # from the database, ensuring it's not stale.
     await session.refresh(user)
-    
-    return {"message": "Your email has been successful verified"}
+
+    return {"message": "Your email has been successfully verified"}
  
 @auth_router.post("/resend-verification", status_code=status.HTTP_202_ACCEPTED)
-async def resend_verification(background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
-    verified = current_user.is_verified
-    
-    if verified:
+async def resend_verification(background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user)):
+    """
+    Resend email verification link to user.
+
+    Only works for users who are not already verified.
+    """
+    if current_user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This user is already verified"
         )
-    
+
     await user_service.verification_logic(current_user.email, current_user, background_tasks)
-    
     return {"message": "A new verification email has been sent."}
     
     
@@ -201,10 +171,13 @@ async def forgot_password(user_data: ForgotPasswordSchema, background_tasks: Bac
     
     # 2. we get the user, to confirm if the user exists
     user = await user_service.get_user_by_email(email, session)
-    
-        # confirming if user exists
+
+    # Always return the same message to prevent email enumeration attacks
+    response_message = "If an account with email exists, a password reset link has been sent"
+
+    # confirming if user exists
     if not user:
-        return {"message": "If an account with email exists, a password reset link has been sent"}
+        return {"message": response_message}
 
     
     # 3. Create a message and verification token that will be sent to the user
@@ -225,11 +198,11 @@ async def forgot_password(user_data: ForgotPasswordSchema, background_tasks: Bac
     
     # 4. Use background task to send the message
     await send_email(background_tasks, message, template_name="reset_password.html")
-    
-    return {"message": "If an account with email exists, a password reset link has been sent"}
+
+    return {"message": response_message}
 
 # |--- Route to reset password ---|
-@auth_router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+@auth_router.post("/reset-password", status_code=status.HTTP_202_ACCEPTED)
 async def reset_password(token: str, password_data:ResetPasswordSchema, session:AsyncSession = Depends(get_session)):
     
     # fetch the token
@@ -252,6 +225,15 @@ async def reset_password(token: str, password_data:ResetPasswordSchema, session:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="This user does not exist in our database"
         )
+        
+    password_reset = password_data.password
+    confirm_password_reset = password_data.confirm_password
+    
+    if password_reset != confirm_password_reset:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The passwords are not the same"
+        )
     
     # generate new password hash
     new_password = password_data.password
@@ -263,7 +245,9 @@ async def reset_password(token: str, password_data:ResetPasswordSchema, session:
     await session.commit()
     await session.refresh(user)
     
-    return None
+    return {
+        "message" : "Password reset was successful"
+    }
 
 
 
@@ -281,10 +265,7 @@ async def change_password(user_data:PasswordChangeSchema,
     verification_successful = verify_password(old_password, current_user.password_hash)
     
     if not verification_successful:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid Password"
-        )
+        raise InvalidCredentialsError("Invalid Password")
         
     # get new password
     new_password = user_data.new_password
@@ -299,7 +280,24 @@ async def change_password(user_data:PasswordChangeSchema,
     return None
 
 @auth_router.get("/users/me/downloads", response_model=List[UserDownloadHistoryModel])
-async def get_downloads(current_user : User = Depends(get_current_user), 
-                        session: AsyncSession = Depends(get_session), 
+async def get_downloads(current_user : User = Depends(get_current_user),
+                        session: AsyncSession = Depends(get_session),
                         skip: int = 0, limit: int = 20):
    return await user_service.get_user_download_history(current_user.uid, session, skip, limit)
+
+
+@auth_router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout_user(
+    logout_data: LogoutSchema,
+    access_token_data: dict = Depends(AccessTokenBearer())
+):
+    """
+    Logout user by invalidating tokens.
+
+    Invalidates both access and refresh tokens by adding their JTIs to Redis blocklist.
+    The refresh token should be provided in the request body as JSON: {"refresh_token": "..."}
+    """
+    return await user_service.logout_user(
+        access_token_data=access_token_data,
+        refresh_token=logout_data.refresh_token
+    )

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from src.config import Config
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm import sessionmaker
-# from src.db.models import *
+from src.db.models import User, Book, Downloads  # Import all models
 
 #|---- Creating Async Engine ---|
 """ This creates an engine that helps with database connection"""
@@ -16,10 +16,16 @@ engine = create_async_engine(
 """Creating initdb() to connect to the database
     and run sql statements"""
 async def init_db():
-    print("Running Init_db....")
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    print("DB Initialized")
+    """Initialize database by creating all tables."""
+    try:
+        print("🔄 Creating database tables...")
+        async with engine.begin() as conn:
+            # Create all tables defined in SQLModel metadata
+            await conn.run_sync(SQLModel.metadata.create_all)
+        print("✅ Database tables created successfully!")
+    except Exception as e:
+        print(f"❌ Error initializing database: {e}")
+        raise
         
 #|---- Create session factory ----|
 async_session = sessionmaker(
