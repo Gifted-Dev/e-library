@@ -18,32 +18,31 @@ user_service = UserService()
 book_service = BookService()
 
 
-# |--- API to give admin access ---|
 @admin_router.post("/make_admin", dependencies=[Depends(superadmin_checker)], response_model=UserPublicModel)
 async def make_admin(email: str = Form(...), session: AsyncSession = Depends(get_session)):
-    # |----Use User service to get the user by mail ---|
+    """
+    Grant admin privileges to a user.
+
+    Only superadmins can promote users to admin role.
+    """
     user = await user_service.get_user_by_email(email, session)
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User with this email Not Found"
         )
-    
-    # |--- Confirm if user is previously an admin user ----|
+
     if user.role == "admin":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User already has admin access"
         )
-    
-    # |--- Give admin role ----|
+
     user.role = "admin"
-    
-    # Save Changes to DB
     await session.commit()
     await session.refresh(user)
-    
+
     return user
 
 # |---- API to give revoke access ---|

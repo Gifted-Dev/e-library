@@ -1,22 +1,29 @@
-# start with a base image
-FROM python:3.11
+FROM python:3.11-slim
 
-# Set a neutral working directory. This is a common best practice.
+# Set working directory
 WORKDIR /app
 
-# Copy only the requirements file first to leverage Docker's layer caching.
-# This layer will only be rebuilt if requirements.txt changes.
-COPY requirements*.txt ./
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Installing the necessary dependencies
-RUN pip install --upgrade pip && pip install -r requirements-dev.txt
+# Copy requirements first for better caching
+COPY requirements.txt .
 
-# Now, copy the rest of the application code.
-# This layer will be rebuilt whenever your source code changes.
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
 COPY . .
 
-# Exposing Application Port
-EXPOSE 8000 
+# Create uploads directory
+RUN mkdir -p uploads
 
-# Running the startup command
-CMD ["uvicorn", "src:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Expose port
+EXPOSE 8000
+
+# Run the application
+CMD ["uvicorn", "src:app", "--host", "0.0.0.0", "--port", "8000"]

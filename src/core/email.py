@@ -16,8 +16,6 @@ mail_config = ConnectionConfig(
     MAIL_SSL_TLS=False,
     USE_CREDENTIALS=True,
     VALIDATE_CERTS=True,
-    # Define the template folder path relative to this file's location.
-    # This is more robust than using a hardcoded path or a config variable.
     TEMPLATE_FOLDER=Path(__file__).parent.parent / 'templates',
 )
 

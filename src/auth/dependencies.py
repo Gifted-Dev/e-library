@@ -7,6 +7,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
 from src.auth.services import UserService
 from src.db.models import User
+from src.core.redis import get_redis_service, RedisService
 from typing import List
 
 
@@ -20,6 +21,13 @@ class TokenBearer(HTTPBearer):
 
         if not token_data:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+        # Check if token is in blocklist
+        redis_service = await get_redis_service()
+        if await redis_service.is_connected():
+            jti = token_data.get("jti")
+            if jti and await redis_service.is_token_blocked(jti):
+                raise HTTPException(status_code=401, detail="Token has been revoked")
 
         self.verify_token_data(token_data)  # 🔥 key part for subclassing
         return token_data

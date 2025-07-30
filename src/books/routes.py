@@ -1,20 +1,20 @@
 from fastapi import APIRouter, status, Depends, UploadFile, File, Form, BackgroundTasks
 from fastapi.exceptions import HTTPException
+from src.core.exceptions import ValidationError
 from fastapi.responses import FileResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.auth.services import UserService
 from src.db.main import get_session
 from src.auth.utils import create_download_token, decode_token
-from src.books.schemas import BookCreateModel, BookSearchModel, BookUpdateModel
+from src.books.schemas import BookCreateModel, BookSearchModel, BookUpdateModel, DownloadLogPublicModel
 from src.books.services import BookService
 from src.auth.dependencies import AccessTokenBearer, RoleChecker, ensure_user_is_verified
-from src.core.storage import get_storage_service 
+from src.core.storage import get_storage_service, delete_book_file_from_storage
 from src.core.email import create_message, send_email
 from datetime import datetime
 from typing import Optional, List
 from src.config import Config
 import os
-import aiofiles
 from uuid import UUID
 
 
@@ -41,80 +41,57 @@ async def upload_file(title: str = Form(...),
                       token_details: dict = Depends(AccessTokenBearer()),
                       file: UploadFile = File(...)):
     
-    # |--- Check if uploaded file is a valid type ---|
-    valid_extension = is_valid_extension(file.filename)
-    
-    # |--- Raise Exception if file is not valid ---|
-    if not valid_extension:
+    """
+    Upload a new book file.
+
+    Only administrators can upload books. Supports PDF, EPUB, and MOBI formats.
+    """
+    if not file.filename or not is_valid_extension(file.filename):
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail="Unsupported file format. Only PDF, EPUB, and MOBI are allowed.")
 
-    
-    # |--- Get the ID of the user that uploaded the file ---|
-    user_id = token_details.get('user')['user_uid']
-    user_id = UUID(user_id)
-    
-    # |---- Get Upload_date ---|
-    upload_date = datetime.now()
-    
-    
-    # |--- Create Book data ---|
+    user_id = UUID(token_details.get('user')['user_uid'])
+
     book_data = BookCreateModel(title=title,
                                 author=author,
                                 description=description,
-                                upload_date=upload_date,
                                 uploaded_by=user_id)
-    
-    
-    # |--- Check if file had been previously uploaded ---|
+
     await book_service.confirm_book_exists(book_data, session)
 
-
-    # Save file using chosen backend
     storage_service = get_storage_service()
     filename, file_url, file_size = await storage_service.save_file(file)
-    
+
     await book_service.save_book(book_data=book_data,
-                                      file_url=file_url,
-                                      file_size=file_size,
-                                      uploaded_by=user_id,
-                                      session=session)
+                                 file_url=file_url,
+                                 file_size=file_size,
+                                 uploaded_by=user_id,
+                                 session=session)
 
     return {
         "message": f"{filename} has been saved",
         "book_title": book_data.title,
-        "upload_date" : str(upload_date)
+        "upload_date": str(datetime.now())
     }
     
-# |---- Routes to get all the books ----|
 @book_router.get("/all_books", dependencies=[Depends(role_checker)], response_model=List[BookSearchModel])
 async def get_all_books(skip: int = 0, limit: int = 20, session: AsyncSession = Depends(get_session)):
-    all_books = await book_service.get_all_books(skip, limit,session)
-    # It's better to return an empty list with a 200 OK status if no books are found.
-    # This is not an error, but a successful query with zero results.
-    return all_books
-
-# |---- Get a particular book ----|
-@book_router.get("/get_book/{book_uid}", dependencies=[Depends(role_checker)], response_model=BookSearchModel)
-async def get_book(book_uid: str, session: AsyncSession = Depends(get_session)):
-    book = await book_service.get_book(book_uid, session)
-    
-    return book
+    """Get all books with pagination."""
+    return await book_service.get_all_books(skip, limit, session)
 
 # |---- Route to search for books ----|
 @book_router.get("/search", dependencies=[Depends(role_checker)], response_model=List[BookSearchModel])
 async def search_books(title: Optional[str] = None, author: Optional[str] = None, skip: int = 0, limit: int = 20, session: AsyncSession = Depends(get_session)):
-    # If the user doesn't provide any search terms, it's best to give them
-    # a clear error instead of returning the entire list of books.
+    """Search books by title or author."""
     if not title and not author:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Please provide a title or an author to search."
-        )
-    books = await book_service.search_book(title, author, skip, limit, session)
-    
-    return books
+        raise ValidationError("Please provide a title or an author to search.")
+    return await book_service.search_book(title, author, skip, limit, session)
+
+@book_router.get("/{book_uid}", dependencies=[Depends(role_checker)], response_model=BookSearchModel)
+async def get_book(book_uid: str, session: AsyncSession = Depends(get_session)):
+    """Get a specific book by its UUID."""
+    return await book_service.get_book(book_uid, session)
 
 
 # |---- Route to Download book ----|
@@ -135,8 +112,9 @@ async def request_download_link(book_uid: str, background_tasks: BackgroundTasks
     book = await book_service.get_book(book_uid, session)
     
     storage_service = get_storage_service()
+    
     # |--- Confirm if file exists on the server ----|
-    if not await storage_service.file_exists(book.file_url):
+    if not book.file_url or not await storage_service.file_exists(book.file_url):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Book file not found on the server"
@@ -151,14 +129,16 @@ async def request_download_link(book_uid: str, background_tasks: BackgroundTasks
     )
     
     # |--- Construct a secure URL with the token as a query parameter ----|
-    file_url = f"{Config.DOMAIN}/books/download?token={book_request_token}"
+    download_url = f"{Config.DOMAIN}/books/download?token={book_request_token}"
     
     message = create_message(
         subject=f"Download Link for {book.title}",
         recipients=[user_email],
-        template_body={"download_url": file_url, "book_title": book.title}
+        template_body={"download_url": download_url, "book_title": book.title}
     )
     
+    # Using await on send_email directly would block. By adding it as a background task,
+    # we can send the 202 response immediately.
     await send_email(background_tasks, message, template_name="download_link.html")
         
     return {"message" : "A download link will be sent to your email shortly"}
@@ -184,13 +164,15 @@ async def download_book(token: str, session: AsyncSession = Depends(get_session)
     book = await book_service.get_book(book_uid, session)
 
     storage_service = get_storage_service()
-    if not await storage_service.file_exists(book.file_url):
+    if not book.file_url or not await storage_service.file_exists(book.file_url):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Book file not found on the server. It may have been moved or deleted."
         )
 
-    return FileResponse(path=book.file_url, filename=book.title, media_type='application/octet-stream')
+    # The storage service now returns the appropriate response directly,
+    # handling both local files (FileResponse) and S3 redirects (RedirectResponse).
+    return await storage_service.get_download_response(book.file_url)
 
 
 # |------- Route to Update Book ----------|
@@ -202,8 +184,17 @@ async def update_book(book_uid: str, book_data: BookUpdateModel, session: AsyncS
     return book
 
 # |---- Route to delete book ---|
-@book_router.delete("/book/{book_uid}", dependencies=[Depends(admin_checker)], status_code=status.HTTP_204_NO_CONTENT)
-async def delete_book(book_uid:str, session:AsyncSession = Depends(get_session)) -> None:
-    await book_service.delete_book(book_uid, session)
-    
-    return None
+@book_router.delete("/delete-book/{book_uid}", dependencies=[Depends(admin_checker)], status_code=status.HTTP_204_NO_CONTENT)
+async def delete_book(book_uid:str, background_tasks: BackgroundTasks, session:AsyncSession = Depends(get_session)) -> None:
+    # The service method now returns the file_url directly after deleting the DB record.
+    file_url_to_delete = await book_service.delete_book(book_uid, session)
+
+    # The slow/unreliable part runs in the background after the response has been sent.
+    background_tasks.add_task(delete_book_file_from_storage, file_url_to_delete)
+
+
+# |---- Route to get download logs ---|
+@book_router.get("/download-logs", response_model=List[DownloadLogPublicModel], dependencies=[Depends(admin_checker)])
+async def get_download_logs(skip: int = 0, limit: int = 20, session: AsyncSession = Depends(get_session)):
+    logs = await book_service.get_download_logs(session, skip, limit)
+    return logs

@@ -1,15 +1,15 @@
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.books.schemas import BookCreateModel, BookUpdateModel
-from fastapi import status
-from fastapi.exceptions import HTTPException
 from sqlmodel import select, desc
 from src.db.models import Book, Downloads
 from datetime import datetime
 from typing import Optional
-from src.core.storage import get_storage_service
 from uuid import UUID
-import os
-import aiofiles
+from src.core.exceptions import (
+    BookNotFoundError,
+    BookAlreadyExistsError,
+    DatabaseError
+)
 
 
 
@@ -18,18 +18,20 @@ import aiofiles
 class BookService:
     
     async def confirm_book_exists(self, book_data, session:AsyncSession):
-        statement = select(Book).where(Book.title == book_data.title,
-                                            Book.author == book_data.author)
-            
-        result = await session.exec(statement) # Execute the statement
-        book_exists = result.first() # Result if book exist or not
-        
-        # |--- If book exist raise exception error ---|
-        if book_exists:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Book already exists"
-            )
+        try:
+            statement = select(Book).where(Book.title == book_data.title,
+                                                Book.author == book_data.author)
+
+            result = await session.exec(statement) # Execute the statement
+            book_exists = result.first() # Result if book exist or not
+
+            # |--- If book exist raise exception error ---|
+            if book_exists:
+                raise BookAlreadyExistsError(book_data.title, book_data.author)
+        except Exception as e:
+            if isinstance(e, BookAlreadyExistsError):
+                raise
+            raise DatabaseError("An error occurred while checking book existence")
         
         
     async def save_book(self, book_data: BookCreateModel,
@@ -64,26 +66,29 @@ class BookService:
         return result.all()
     
     async def get_book(self, book_uid:str, session:AsyncSession):
-        # To get a book by its UID
-        uid_update = UUID(book_uid)
-        
-        # |--- Run statement to check if book exists ---|
-        statement = select(Book).where(Book.uid == uid_update)
-        
-        # |--- Execute Statement and save in variable "result"---|
-        result = await session.exec(statement)
-    
-        book = result.first()
-        
-        # |--- Throw Exception if no book is found ---|
-        if not book:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Book is not available"
-            )
-        
-        
-        return book
+        try:
+            # To get a book by its UID
+            uid_update = UUID(book_uid)
+
+            # |--- Run statement to check if book exists ---|
+            statement = select(Book).where(Book.uid == uid_update)
+
+            # |--- Execute Statement and save in variable "result"---|
+            result = await session.exec(statement)
+
+            book = result.first()
+
+            # |--- Throw Exception if no book is found ---|
+            if not book:
+                raise BookNotFoundError(book_uid)
+
+            return book
+        except ValueError:
+            raise ValueError(f"Invalid book ID format: {book_uid}")
+        except Exception as e:
+            if isinstance(e, BookNotFoundError):
+                raise
+            raise DatabaseError("An error occurred while fetching book")
     
     async def search_book(self, title: Optional[str], author: Optional[str], skip, limit, session:AsyncSession):
         # |--- Statement to check which the user search for ---|
@@ -125,27 +130,16 @@ class BookService:
         return book
         
     
-    async def delete_book(self, book_uid: str, session:AsyncSession) -> None:
+    async def delete_book(self, book_uid: str, session:AsyncSession) -> str:
         # |---- select book by uid ----|
         book = await self.get_book(book_uid, session)
         
-        storage_service = get_storage_service()
-        # |---- Delete Book ----|
-        # Use the storage abstraction to check for file existence
-        if book.file_url and await storage_service.file_exists(book.file_url):
-            try:
-                await storage_service.delete_file(book.file_url)
-            except Exception as e: # Raise exception error if failed to delete.
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to delete file:{e}"
-                )
-                
         # |---- Commit Changes ----|
         await session.delete(book)
         await session.commit()
         
-        return None
+        return book.file_url
+    
     
     async def create_download_record(self, book_uid: str, user_uid: str, session: AsyncSession):
         # Convert string UIDs to UUID objects, as the database model expects.
