@@ -13,6 +13,22 @@ services:
         value: HS256
       - key: STORAGE_BACKEND
         value: local
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DOMAIN
+        value: https://elibrary-api.onrender.com/api/v1
+      - key: MAIL_USERNAME
+        value: 937511001@smtp-brevo.com
+      - key: MAIL_PASSWORD
+        value: q05I6TWfaYQxNp2J
+      - key: MAIL_FROM
+        value: noreply@elibrary.com
+      - key: MAIL_PORT
+        value: 587
+      - key: MAIL_SERVER
+        value: smtp-relay.brevo.com
+      - key: MAIL_FROM_NAME
+        value: E-Library
 
   # PostgreSQL Database
   - type: pserv
