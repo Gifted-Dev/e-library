@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str
     JWT_ALGORITHM: str
     STORAGE_BACKEND: str
-    SUPERADMIN_EMAILS_RAW: str
+    SUPERADMIN_EMAILS_RAW: str = ""  # Made optional with default
     MAIL_USERNAME: str
     MAIL_PASSWORD: str
     MAIL_FROM: str
@@ -20,16 +20,16 @@ class Settings(BaseSettings):
     VALIDATE_CERTS: bool = True
 
     # --- App Config ---
-    ENVIRONMENT: str = "production"
+    ENVIRONMENT: str = "development"
     DOMAIN: str
-    CLIENT_DOMAIN: str
+    CLIENT_DOMAIN: str = ""  # Made optional with default
 
-    
-    # For Future s3 bucket
-    AWS_ACCESS_KEY_ID: str
-    AWS_SECRET_ACCESS_KEY: str
-    AWS_REGION: str
-    AWS_BUCKET_NAME: str
+
+    # For Future s3 bucket - Made optional for development
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = ""
+    AWS_BUCKET_NAME: str = ""
 
     # Redis Configuration
     REDIS_HOST: str = "localhost"
@@ -40,7 +40,9 @@ class Settings(BaseSettings):
 
     @property
     def SUPERADMIN_EMAILS(self) -> List[str]:
-        return [email.strip() for email in self.SUPERADMIN_EMAILS_RAW.split(",")]
+        if not self.SUPERADMIN_EMAILS_RAW:
+            return []
+        return [email.strip() for email in self.SUPERADMIN_EMAILS_RAW.split(",") if email.strip()]
     
     model_config = SettingsConfigDict(
         env_file=".env",
