@@ -17,10 +17,11 @@ services:
         generateValue: true
       - key: DOMAIN
         value: https://elibrary-api.onrender.com/api/v1
-      - key: MAIL_USERNAME
-        value: 937511001@smtp-brevo.com
-      - key: MAIL_PASSWORD
-        value: q05I6TWfaYQxNp2J
+      # Email credentials - SET THESE IN RENDER DASHBOARD, NOT HERE!
+      # - key: MAIL_USERNAME
+      #   value: [SET IN RENDER DASHBOARD]
+      # - key: MAIL_PASSWORD
+      #   value: [SET IN RENDER DASHBOARD]
       - key: MAIL_FROM
         value: noreply@elibrary.com
       - key: MAIL_PORT
