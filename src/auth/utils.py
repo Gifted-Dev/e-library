@@ -27,8 +27,8 @@ def create_access_token(user_data: dict, expiry:timedelta = None, refresh=False)
     }
     
     token = jwt.encode(
-        payload=payload,
-        key = Config.JWT_SECRET,
+        payload,
+        Config.JWT_SECRET,
         algorithm=Config.JWT_ALGORITHM
     )
     
@@ -44,8 +44,8 @@ def create_download_token(user_data: dict, book_uid: str, expiry:timedelta = Non
     }
      
     token = jwt.encode(
-        payload=payload,
-        key = Config.JWT_SECRET,
+        payload,
+        Config.JWT_SECRET,
         algorithm=Config.JWT_ALGORITHM
     )
     
@@ -61,8 +61,8 @@ def create_verification_token(user_data: dict, expiry: timedelta = None, refresh
     }
     
     token = jwt.encode(
-        payload=payload,
-        key = Config.JWT_SECRET,
+        payload,
+        Config.JWT_SECRET,
         algorithm=Config.JWT_ALGORITHM
     )
     
@@ -77,8 +77,8 @@ def create_password_reset_token(user_data: dict, expiry: timedelta = None, refre
     }
     
     token = jwt.encode(
-        payload=payload,
-        key = Config.JWT_SECRET,
+        payload,
+        Config.JWT_SECRET,
         algorithm=Config.JWT_ALGORITHM
     )
     
@@ -87,8 +87,8 @@ def create_password_reset_token(user_data: dict, expiry: timedelta = None, refre
 def decode_token(token:str) -> dict:
     try:
         token_data = jwt.decode(
-            jwt=token,
-            key=Config.JWT_SECRET,
+            token,
+            Config.JWT_SECRET,
             algorithms=[Config.JWT_ALGORITHM]
         )
 

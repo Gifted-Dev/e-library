@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     DATABASE_URL : str
     JWT_SECRET: str
     JWT_ALGORITHM: str
-    STORAGE_BACKEND: str
+    STORAGE_BACKEND: str = "local"  # Default to local storage
     SUPERADMIN_EMAILS_RAW: str = ""  # Made optional with default
     MAIL_USERNAME: str
     MAIL_PASSWORD: str

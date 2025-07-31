@@ -4,7 +4,7 @@ sqlmodel
 pydantic-settings
 asyncpg
 passlib[bcrypt]
-python-jose[cryptography]
+PyJWT[crypto]
 fastapi-mail
 aioboto3
 aiofiles
