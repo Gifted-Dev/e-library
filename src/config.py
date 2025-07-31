@@ -25,11 +25,15 @@ class Settings(BaseSettings):
     CLIENT_DOMAIN: str = ""  # Made optional with default
 
 
-    # For Future s3 bucket - Made optional for development
+    # For S3-compatible storage (S3, R2, MinIO, etc.)
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = ""
     AWS_BUCKET_NAME: str = ""
+    S3_ENDPOINT_URL: str = ""  # For R2/MinIO custom endpoints
+
+    # Cloudflare R2 specific
+    R2_ACCOUNT_ID: str = ""  # Your Cloudflare account ID
 
     # Redis Configuration
     REDIS_HOST: str = "localhost"
