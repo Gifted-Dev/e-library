@@ -1,10 +1,18 @@
 # 📚 E-Library Management System - Backend API
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Deployment](https://img.shields.io/badge/Deployed-Render-brightgreen.svg)](https://lightbearers.onrender.com)
+[![API Status](https://img.shields.io/badge/API-Live-success.svg)](https://lightbearers.onrender.com/health)
 
 A modern, high-performance FastAPI backend for digital library management with JWT authentication, book management, and Redis-powered secure logout functionality.
+
+## 🌐 Live API
+- **Production API**: https://lightbearers.onrender.com
+- **API Documentation**: https://lightbearers.onrender.com/docs
+- **Health Check**: https://lightbearers.onrender.com/health
+- **Frontend Integration Guide**: [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
 
 ## 🚀 Features
 
@@ -45,10 +53,12 @@ A modern, high-performance FastAPI backend for digital library management with J
 - **[SQLModel](https://sqlmodel.tiangolo.com/)** - Type-safe database operations
 - **[PostgreSQL](https://www.postgresql.org/)** - Primary database
 - **[Redis](https://redis.io/)** - JWT blocklist and caching
+- **[PyJWT](https://pyjwt.readthedocs.io/)** - JWT token handling
 - **[Pydantic](https://pydantic.dev/)** - Data validation and serialization
 - **[Uvicorn](https://www.uvicorn.org/)** - ASGI server
 - **[Alembic](https://alembic.sqlalchemy.org/)** - Database migrations (available)
 - **[Pytest](https://pytest.org/)** - Testing framework
+- **[Render](https://render.com/)** - Cloud deployment platform
 
 ## 📋 Prerequisites
 
@@ -107,9 +117,10 @@ uvicorn src:app --host 0.0.0.0 --port 8000
 ```
 
 ### **6. Access API Documentation**
-- **Interactive API Docs**: http://localhost:8000/docs
-- **ReDoc Documentation**: http://localhost:8000/redoc
-- **Health Check**: http://localhost:8000/health
+- **Local API Docs**: http://localhost:8000/docs
+- **Local ReDoc**: http://localhost:8000/redoc
+- **Local Health Check**: http://localhost:8000/health
+- **Production API**: https://lightbearers.onrender.com/docs
 
 ## 🔧 Environment Variables
 
@@ -156,41 +167,46 @@ BCRYPT_ROUNDS=12
 
 ## 📱 API Endpoints
 
+> **📖 Complete API Documentation**: See [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) for detailed request/response examples and frontend integration guide.
+
 ### **Authentication**
 ```http
 POST   /api/v1/auth/signup          # User registration
 POST   /api/v1/auth/login           # User login
 POST   /api/v1/auth/logout          # User logout (invalidates tokens)
-POST   /api/v1/auth/refresh         # Refresh access token
 GET    /api/v1/auth/users/me        # Get current user profile
-PUT    /api/v1/auth/users/me        # Update user profile
+PATCH  /api/v1/auth/users/me        # Update user profile
 POST   /api/v1/auth/verify-email    # Verify email address
 POST   /api/v1/auth/forgot-password # Request password reset
 POST   /api/v1/auth/reset-password  # Reset password
+POST   /api/v1/auth/change-password # Change password
+GET    /api/v1/auth/downloads       # Get user download history
 ```
 
 ### **Books**
 ```http
-GET    /api/v1/books/all_books      # List all books (paginated)
+GET    /api/v1/books/               # List all books (paginated)
 GET    /api/v1/books/search         # Search books by title/author
-GET    /api/v1/books/get_book/{id}  # Get specific book details
+GET    /api/v1/books/{id}           # Get specific book details
 POST   /api/v1/books/upload         # Upload book (admin only)
-GET    /api/v1/books/download/{id}  # Download book file
-DELETE /api/v1/books/delete-book/{id} # Delete book (admin only)
-GET    /api/v1/books/download-logs  # Get download logs (admin only)
+PATCH  /api/v1/books/{id}           # Update book (admin only)
+DELETE /api/v1/books/{id}           # Delete book (admin only)
+GET    /api/v1/books/{id}/download  # Download book file
+POST   /api/v1/books/{id}/download-link # Request download link
 ```
 
 ### **Admin**
 ```http
 GET    /api/v1/admin/users          # List all users (admin only)
-DELETE /api/v1/admin/users/{id}     # Delete user (admin only)
-GET    /api/v1/admin/stats          # System statistics (admin only)
+GET    /api/v1/admin/admins         # List all admins (admin only)
+PATCH  /api/v1/admin/users/{id}/make-admin   # Make user admin (superadmin only)
+PATCH  /api/v1/admin/users/{id}/revoke-admin # Revoke admin (superadmin only)
+GET    /api/v1/admin/downloads      # Get download analytics (admin only)
 ```
 
 ### **Health & Monitoring**
 ```http
 GET    /health                      # Application health check
-GET    /api/v1/health               # Detailed health status
 ```
 
 ## 🗄 Database Schema
@@ -249,7 +265,23 @@ The project includes comprehensive tests covering:
 
 ## 🚀 Deployment
 
-### **Docker Deployment**
+### **✅ Production Deployment (Render)**
+**Status**: ✅ **LIVE** at https://lightbearers.onrender.com
+
+The API is successfully deployed on Render with:
+- ✅ **PostgreSQL Database** - Connected and operational
+- ✅ **Redis Cache** - Connected for JWT blocklist
+- ✅ **Environment Variables** - Properly configured
+- ✅ **Health Monitoring** - Available at `/health`
+- ✅ **Auto-deployment** - Deploys on push to main branch
+
+**Render Configuration:**
+- **Build Command**: `pip install -r requirements.txt`
+- **Start Command**: `fastapi run src/ --host 0.0.0.0 --port $PORT`
+- **Environment**: Python 3.13 (with PyJWT compatibility)
+- **Services**: PostgreSQL + Redis + Web Service
+
+### **🐳 Docker Deployment (Alternative)**
 ```bash
 # Build image
 docker build -t elibrary-api .
@@ -258,20 +290,20 @@ docker build -t elibrary-api .
 docker run -p 8000:8000 --env-file .env elibrary-api
 ```
 
-### **Render Deployment**
-1. Connect your GitHub repository to Render
-2. Set environment variables in Render dashboard
-3. Deploy automatically on push to main branch
-
-**Render Configuration:**
-- **Build Command**: `pip install -r requirements.txt`
-- **Start Command**: `uvicorn src:app --host 0.0.0.0 --port $PORT`
-- **Environment**: Python 3.11
-
-### **Railway Deployment**
+### **🚄 Railway Deployment (Alternative)**
 1. Connect repository to Railway
 2. Configure environment variables
 3. Deploy with automatic builds
+
+### **📊 Deployment Status**
+- **Production URL**: https://lightbearers.onrender.com
+- **API Docs**: https://lightbearers.onrender.com/docs
+- **Health Check**: https://lightbearers.onrender.com/health
+- **Database**: PostgreSQL (Render)
+- **Cache**: Redis (Render)
+- **Storage**: Local (Render filesystem)
+- **SSL**: ✅ Enabled
+- **CORS**: ✅ Configured
 
 ## 📊 Performance
 
@@ -304,12 +336,24 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📞 Support
+## 📞 Support & Resources
 
-- **Documentation**: http://localhost:8000/docs
-- **Issues**: [GitHub Issues](https://github.com/Gifted-Dev/e-library/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Gifted-Dev/e-library/discussions)
+### **📚 Documentation**
+- **Live API Docs**: https://lightbearers.onrender.com/docs
+- **Frontend Integration**: [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
+- **Local Development**: http://localhost:8000/docs
+
+### **🐛 Issues & Support**
+- **Bug Reports**: [GitHub Issues](https://github.com/Gifted-Dev/e-library/issues)
+- **Feature Requests**: [GitHub Discussions](https://github.com/Gifted-Dev/e-library/discussions)
+- **API Status**: https://lightbearers.onrender.com/health
+
+### **🔗 Quick Links**
+- **Production API**: https://lightbearers.onrender.com
+- **Repository**: https://github.com/Gifted-Dev/e-library
+- **API Documentation**: [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
 
 ---
 
 **Built with ❤️ using FastAPI and modern Python practices**
+**🚀 Successfully deployed and ready for frontend integration!**
