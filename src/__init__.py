@@ -52,7 +52,7 @@ for exception_type, handler in EXCEPTION_HANDLERS.items():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[Config.CLIENT_DOMAIN] if Config.ENVIRONMENT == "development" else [Config.CLIENT_DOMAIN],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     allow_headers=["Authorization", "Content-Type"],
