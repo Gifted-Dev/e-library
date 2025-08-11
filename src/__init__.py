@@ -50,9 +50,16 @@ for exception_type, handler in EXCEPTION_HANDLERS.items():
 
 # --- CORS Middleware ---
 
+origins = [
+    "http://127.0.0.1:49702",  # The frontend developer's local server
+    "http://localhost:3000",   # A common local dev server
+    # Add your production frontend URL here when you deploy the frontend
+    # "https://your-production-frontend.com",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     allow_headers=["Authorization", "Content-Type"],
