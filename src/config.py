@@ -3,8 +3,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 from pathlib import Path
 
-# Define the project's root directory. This is the most robust way to handle paths.
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Define the path to the 'src' directory, which contains this config file.
+SRC_DIR = Path(__file__).resolve().parent
+
+# Define the project's root directory as the parent of the 'src' directory.
+PROJECT_ROOT = SRC_DIR.parent
 
 class Settings(BaseSettings):
     DATABASE_URL : str

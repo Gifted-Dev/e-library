@@ -1,6 +1,6 @@
 from fastapi_mail import FastMail, ConnectionConfig, MessageSchema, MessageType
 from fastapi import BackgroundTasks
-from src.config import Config
+from src.config import Config, PROJECT_ROOT
 from pathlib import Path
 
 
@@ -16,7 +16,7 @@ mail_config = ConnectionConfig(
     MAIL_SSL_TLS=False,
     USE_CREDENTIALS=True,
     VALIDATE_CERTS=True,
-    TEMPLATE_FOLDER=Path(__file__).parent.parent / 'templates',
+    TEMPLATE_FOLDER=PROJECT_ROOT / 'templates',
 )
 
 # Create Object to send emails with the config

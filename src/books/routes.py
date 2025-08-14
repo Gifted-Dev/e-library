@@ -29,8 +29,8 @@ admin_checker = RoleChecker(['admin', 'superadmin'], admin_detail)
 user_service = UserService()
 book_service = BookService()
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+from src.config import PROJECT_ROOT
+templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
 
 ALLOWED_EXTENSIONS = {".pdf", ".epub", ".mobi"}
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}

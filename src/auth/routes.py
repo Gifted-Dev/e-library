@@ -41,9 +41,8 @@ auth_router = APIRouter()
 user_service = UserService()
 
 # Define the project's base directory and point to the root templates folder
-# This ensures that the path to templates is always correct, regardless of where the app is run from.
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+from src.config import PROJECT_ROOT
+templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
 
 
 @auth_router.post("/signup", status_code=status.HTTP_200_OK)
