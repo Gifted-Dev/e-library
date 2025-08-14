@@ -53,6 +53,10 @@ app = FastAPI(
 )
 
 # --- Serve Static Files ---
+# Ensure the uploads directory exists before mounting. This is crucial for deployment environments.
+UPLOADS_DIR = PROJECT_ROOT / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
 app.mount(
     "/static",
     StaticFiles(directory=PROJECT_ROOT / "static"),
@@ -60,7 +64,7 @@ app.mount(
 )
 app.mount(
     "/uploads",
-    StaticFiles(directory=PROJECT_ROOT / "uploads"),
+    StaticFiles(directory=UPLOADS_DIR),
     name="uploads"
 )
 

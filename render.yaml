@@ -4,9 +4,10 @@ services:
     name: elibrary-api
     env: python
     plan: free
-    # Create the 'uploads' directory during the build process
-    buildCommand: pip install -r requirements.txt && mkdir -p uploads
-    startCommand: fastapi run src/ --host 0.0.0.0 --port $PORT
+    # The 'uploads' directory is now created by the application on startup.
+    buildCommand: pip install -r requirements.txt
+    # Use uvicorn for production, which is the standard for FastAPI.
+    startCommand: uvicorn src:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: ENVIRONMENT
         value: production
