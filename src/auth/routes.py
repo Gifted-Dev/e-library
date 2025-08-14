@@ -40,7 +40,7 @@ from typing import List, Optional
 auth_router = APIRouter()
 user_service = UserService()
 
-# Define the project's base directory and point to the root templates folder
+# Use the centralized PROJECT_ROOT from config for consistency
 from src.config import PROJECT_ROOT
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
 

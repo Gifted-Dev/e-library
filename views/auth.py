@@ -8,8 +8,9 @@ from src.core.exceptions import InvalidTokenError, UserNotFoundError
 
 router = APIRouter()
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+# Use the centralized PROJECT_ROOT from config for consistency
+from src.config import PROJECT_ROOT
+templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
 user_service = UserService()
 
 @router.get("/auth/verify-email", response_class=HTMLResponse)

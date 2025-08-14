@@ -12,9 +12,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 router = APIRouter()
 admin_checker = RoleChecker(['admin', 'superadmin'])
 
-# Define the project's base directory and point to the root templates folder
-BASE_DIR = Path(__file__).resolve().parent.parent
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+# Use the centralized PROJECT_ROOT from config for consistency
+from src.config import PROJECT_ROOT
+templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
 book_service = BookService()
 user_service = UserService()
 

@@ -29,6 +29,7 @@ admin_checker = RoleChecker(['admin', 'superadmin'], admin_detail)
 user_service = UserService()
 book_service = BookService()
 
+# Use the centralized PROJECT_ROOT from config for consistency
 from src.config import PROJECT_ROOT
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
 
