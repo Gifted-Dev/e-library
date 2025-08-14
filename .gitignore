@@ -1,3 +1,18 @@
-.env
-.venv/
+# Byte-compiled / optimized / DLL files
 __pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+
+# User-uploaded content - This should NOT be in version control
+uploads/
+
+# IDE / Editor specific folders
+.vscode/
+.idea/
+

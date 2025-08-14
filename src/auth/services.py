@@ -18,7 +18,8 @@ from src.core.exceptions import (
     UserNotFoundError,
     UserAlreadyExistsError,
     InvalidCredentialsError,
-    DatabaseError
+    DatabaseError,
+    InvalidTokenError
 )
 from src.core.redis import get_redis_service
 from src.auth.utils import decode_token
@@ -63,6 +64,29 @@ class UserService:
 
         return new_user
     
+    async def verify_user_email(self, token: str, session: AsyncSession) -> User:
+        """
+        Verifies a user's email using a token, marks them as verified, and returns the user.
+        Raises InvalidTokenError or UserNotFoundError on failure.
+        """
+        token_data = decode_token(token)
+        if not token_data:
+            raise InvalidTokenError("Invalid or expired verification token. Please request a new one.")
+
+        email = token_data["user"]["email"]
+        user = await self.get_user_by_email(email, session)
+
+        if not user:
+            raise UserNotFoundError("User associated with this token not found.")
+
+        # Only commit to the database if the user is not already verified.
+        if not user.is_verified:
+            user.is_verified = True
+            await session.commit()
+            await session.refresh(user)
+        
+        return user
+
     
     async def login_user(self, login_data: UserLoginModel, session:AsyncSession):
         try:
@@ -78,26 +102,34 @@ class UserService:
             validated = verify_password(login_data.password, user.password_hash)
 
             if validated:
+                # Check if the user's email is in the superadmin list and their role isn't already superadmin.
+                # This promotes them upon login and persists the change.
+                if email in Config.SUPERADMIN_EMAILS and user.role != "superadmin":
+                    user.role = "superadmin"
+                    session.add(user)
+                    await session.commit()
+                    await session.refresh(user) # Ensure the user object has the latest data
+                    logger.info(f"User '{email}' promoted to superadmin upon login.")
+
                 # create access token and refresh if password is valid
                 access_token = create_access_token(
                     user_data={"email": user.email,
-                               "user_uid": str(user.uid),
-                               "role": user.role}
+                            "user_uid": str(user.uid),
+                            "role": user.role}
                 )
 
                 refresh_token = create_access_token(
                     user_data={"email": user.email,
-                               "user_uid": str(user.uid),
-                               },
+                            "user_uid": str(user.uid),
+                            },
                     refresh=True,
                     expiry=timedelta(days=2)
                 )
 
-                return JSONResponse(content={
-                    "message": "Login Successful",
+                return {
                     "access_token": access_token,
                     "refresh_token": refresh_token
-                })
+                }
             else:
                 raise InvalidCredentialsError("Invalid email or password")
         except Exception as e:

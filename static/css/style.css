@@ -1,0 +1,133 @@
+/*
+ * =========================================
+ * Theme Colors
+ * =========================================
+ */
+:root {
+    --dark-green: #215621;
+    --bright-yellow: #FFFF33;
+    --light-gray-bg: #ececec;
+    --dark-text: #343a40;
+}
+
+/*
+ * =========================================
+ * General Body and Typography
+ * =========================================
+ */
+
+body {
+    /* A subtle gradient is more visually appealing than a flat color. */
+    background: linear-gradient(to bottom, #ffffff, #f0f2f5);
+    min-height: 100vh;
+    
+    /* Set the default text color to a dark gray for good contrast. */
+    color: var(--dark-text); 
+    
+    /* Use a clean font family for better typography. */
+    font-family: 'Lato', sans-serif; 
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Playfair Display', serif;
+    color: var(--dark-green);
+    font-weight: 700;
+}
+
+/*
+ * =========================================
+ * Navbar Customization
+ * =========================================
+ */
+.navbar {
+    background-color: var(--dark-green);
+}
+
+.navbar-brand {
+    font-family: 'Playfair Display', serif;
+}
+
+.navbar .navbar-brand span,
+.navbar .nav-link {
+    color: var(--bright-yellow) !important;
+    font-weight: 700;
+    transition: transform 0.2s ease-in-out, color 0.2s ease-in-out; /* Smooth transition for hover */
+}
+
+.navbar .nav-link:hover {
+    color: #ffffff !important; /* White on hover for a nice effect */
+    transform: scale(1.1); /* Slightly enlarge the link on hover */
+}
+
+/* Customizing the outline button for the navbar to use theme colors */
+.navbar .btn-outline-light {
+    border-color: var(--bright-yellow);
+    color: var(--bright-yellow);
+    transition: all 0.3s ease-in-out;
+}
+
+.navbar .btn-outline-light:hover {
+    background-color: var(--bright-yellow);
+    color: var(--dark-green);
+}
+
+/*
+ * =========================================
+ * Button Customization
+ * =========================================
+ */
+.btn-primary {
+    background-color: var(--dark-green);
+    border-color: var(--dark-green);
+}
+
+.btn-primary:hover, .btn-primary:focus {
+    background-color: #1a431a; /* A slightly darker green for hover */
+    border-color: #1a431a;
+}
+
+.btn-outline-success {
+    border-color: var(--dark-green);
+    color: var(--dark-green);
+}
+
+.btn-outline-success:hover {
+    background-color: var(--dark-green);
+    color: #ffffff; /* White text on hover */
+}
+
+/*
+ * =========================================
+ * Utility and Link Customization
+ * =========================================
+ */
+.link-themed {
+    color: var(--dark-green);
+    font-weight: 700; /* Make themed links bold for emphasis */
+    text-decoration: none;
+    transition: color 0.2s ease-in-out;
+}
+
+.link-themed:hover {
+    color: #1a431a; /* Darken on hover for a subtle effect */
+    text-decoration: underline;
+}
+
+/*
+ * =========================================
+ * HTMX Indicators
+ * =========================================
+ */
+
+/* Hide the spinner by default */
+.htmx-indicator {
+    display: none;
+}
+
+/* When a request is in flight, hide the search icon and show the spinner */
+.htmx-request .search-icon {
+    display: none;
+}
+.htmx-request .htmx-indicator {
+    display: inline-block;
+}

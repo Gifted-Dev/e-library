@@ -1,25 +1,18 @@
 # |---- Dependencies Needed ----|
 
-# Import APIRouter
-# Import UserService
-# Import responseMondel, UserCreateModel
-# import get_session from db.main
-
-
-
-
-from fastapi import APIRouter, status, Depends, BackgroundTasks
+from pathlib import Path
+from fastapi import (
+    APIRouter, status, Depends, BackgroundTasks, Form, Request, Response
+)
+from fastapi.templating import Jinja2Templates
 from src.auth.services import UserService
 from src.auth.schemas import (UserCreateModel,
-                              UserPublicModel,
-                              UserLoginModel,
-                              UserUpdateModel,
-                              UserDownloadHistoryModel,
-                              ForgotPasswordSchema,
-                              ResetPasswordSchema,
-                              PasswordChangeSchema,
-                              LogoutSchema)
-from src.auth.utils import create_verification_token, create_password_reset_token, verify_password, generate_password_hash
+                            UserPublicModel,
+                            UserLoginModel,
+                            UserUpdateModel,
+                            UserDownloadHistoryModel,
+                            PasswordChangeSchema)
+from src.auth.utils import create_password_reset_token, verify_password, generate_password_hash
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
 from src.config import Config
@@ -35,89 +28,130 @@ from src.core.exceptions import (
 )
 from src.auth.dependencies import (
     RefreshTokenBearer,
-    AccessTokenBearer,
     get_current_user,
-    RoleChecker,
+    get_validated_token_data,
     User
 )
 
-from fastapi_mail import MessageType
 from src.auth.utils import create_access_token, decode_token
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 auth_router = APIRouter()
 user_service = UserService()
-role_checker = RoleChecker(['user', 'admin', 'superadmin'])
+
+# Define the project's base directory and point to the root templates folder
+# This ensures that the path to templates is always correct, regardless of where the app is run from.
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
-
-@auth_router.post("/signup", response_model=UserPublicModel, status_code=status.HTTP_201_CREATED)
-async def register_user(user_data: UserCreateModel, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
+@auth_router.post("/signup", status_code=status.HTTP_200_OK)
+async def register_user(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    first_name: str = Form(..., alias="signupFirstName"),
+    last_name: str = Form(..., alias="signupLastName"),
+    email: str = Form(..., alias="signupEmail"),
+    password: str = Form(..., alias="signupPassword")
+):
     """
     Register a new user account.
 
     Creates a new user with email verification and automatic superadmin assignment
     if the email is in the configured superadmin list.
     """
-    email = user_data.email
+    try:
+        user_data = UserCreateModel(
+            first_name=first_name, last_name=last_name, email=email, password=password
+        )
+        user_exists = await user_service.get_user_by_email(email, session)
+        if user_exists:
+            raise UserAlreadyExistsError(email)
 
-    user_exists = await user_service.get_user_by_email(email, session)
-    if user_exists:
-        raise UserAlreadyExistsError(email)
+        new_user = await user_service.create_user(user_data, session)
+        await user_service.verification_logic(email, new_user, background_tasks)
 
-    new_user = await user_service.create_user(user_data, session)
-    await user_service.verification_logic(email, new_user, background_tasks)
-
-    return new_user
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request,
+            "message": "Signup successful! A verification email has been sent.",
+            "type": "success"
+        })
+    except (UserAlreadyExistsError, ValidationError) as e:
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request, "message": str(e), "type": "danger"
+        })
 
 @auth_router.get("/verify-email", status_code=status.HTTP_200_OK)
 async def verify_email(token: str, session: AsyncSession = Depends(get_session)):
     """
-    Verify user email address using verification token.
+    Verify user email address using verification token. (API endpoint)
 
     Decodes the verification token and marks the user as verified.
     """
-    token_data = decode_token(token)
-    if not token_data:
-        raise InvalidTokenError("Invalid or expired verification token")
-
-    email = token_data["user"]["email"]
-    user = await user_service.get_user_by_email(email, session)
-
-    if not user:
-        raise UserNotFoundError("This user's email is not found")
-
-    user.is_verified = True
-    await session.commit()
-    await session.refresh(user)
-
-    return {"message": "Your email has been successfully verified"}
+    try:
+        await user_service.verify_user_email(token, session)
+        return {"message": "Your email has been successfully verified"}
+    except (InvalidTokenError, UserNotFoundError) as e:
+        # Re-raise as an HTTPException for API consumers, which our error handler will catch.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
  
-@auth_router.post("/resend-verification", status_code=status.HTTP_202_ACCEPTED)
-async def resend_verification(background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user)):
+@auth_router.post("/resend-verification", status_code=status.HTTP_200_OK)
+async def resend_verification(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user)
+):
     """
-    Resend email verification link to user.
-
+    Resend email verification link to user. Returns an HTML partial.
     Only works for users who are not already verified.
     """
     if current_user.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This user is already verified"
-        )
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request, "message": "This account is already verified.", "type": "info"
+        })
 
     await user_service.verification_logic(current_user.email, current_user, background_tasks)
-    return {"message": "A new verification email has been sent."}
+    
+    return templates.TemplateResponse("partials/_alert.html", {
+        "request": request, "message": "A new verification email has been sent.", "type": "success"
+    })
     
     
+@auth_router.post("/login", status_code=status.HTTP_200_OK)
+async def login_user(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    email: str = Form(..., alias="loginEmail"),
+    password: str = Form(..., alias="loginPassword")
+):
+    try:
+        login_data = UserLoginModel(email=email, password=password)
+        tokens = await user_service.login_user(login_data, session)
 
-@auth_router.post("/login", status_code=status.HTTP_202_ACCEPTED)
-async def login_user(login_data: UserLoginModel, session: AsyncSession = Depends(get_session)):
-    # The user service handles the entire login flow: finding the user,
-    # checking for verification, verifying the password, and creating tokens.
-    login = await user_service.login_user(login_data, session)
-    return login
+        # Create a response object to set cookies and headers.
+        # This avoids conflicts with exception handlers.
+        response = Response()
+        response.set_cookie(
+            key="access_token",
+            value=f"Bearer {tokens['access_token']}",
+            httponly=True,
+            samesite="lax",
+            secure=Config.ENVIRONMENT != "development",
+            path="/"
+        )
+        # This header tells HTMX to do a full page refresh on success
+        response.headers["HX-Refresh"] = "true"
+        return response
+
+    except (UserNotFoundError, InvalidCredentialsError) as e:
+        # On failure, return an alert partial to the modal
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request,
+            "message": str(e),
+            "type": "danger"
+        })
 
 # |----Route for user to check their Profile ----|
 @auth_router.get("/users/me", response_model=UserPublicModel)
@@ -162,122 +196,112 @@ async def get_new_access_token(
             detail="Invalid or expired token"
         )
         
-@auth_router.post("/forgot-password")
-async def forgot_password(user_data: ForgotPasswordSchema, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
+@auth_router.post("/forgot-password", status_code=status.HTTP_200_OK)
+async def forgot_password(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    email: str = Form(...)
+):
     """This route is used to send the user a password reset link"""
-    
-    # 1. First we get the user email
-    email = user_data.email
-    
-    # 2. we get the user, to confirm if the user exists
     user = await user_service.get_user_by_email(email, session)
 
     # Always return the same message to prevent email enumeration attacks
-    response_message = "If an account with email exists, a password reset link has been sent"
+    response_message = "If an account with that email exists, a password reset link has been sent."
 
-    # confirming if user exists
-    if not user:
-        return {"message": response_message}
-
-    
-    # 3. Create a message and verification token that will be sent to the user
-    password_reset_token = create_password_reset_token(
-        user_data={"email" : email,
-                   "user_uid": str(user.uid)
-                   }
-    )
-    
-    # This link should point to your frontend application.
-    reset_link = f"{Config.DOMAIN}/reset-password?token={password_reset_token}"
-    
-    message = create_message(
-        subject="Password Reset Request",
-        recipients=[email],
-        template_body={"reset_link": reset_link, "first_name": user.first_name},
-    )
-    
-    # 4. Use background task to send the message
-    await send_email(background_tasks, message, template_name="reset_password.html")
-
-    return {"message": response_message}
-
-# |--- Route to reset password ---|
-@auth_router.post("/reset-password", status_code=status.HTTP_202_ACCEPTED)
-async def reset_password(token: str, password_data:ResetPasswordSchema, session:AsyncSession = Depends(get_session)):
-    
-    # fetch the token
-    token_data = decode_token(token)
-
-    # check if the token is valid
-    if not token_data:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired password reset token"
-        )
-    
-    # fetch the user details from token
-    user_uid = token_data["user"]["user_uid"]
-    user = await user_service.get_user_by_uid(user_uid, session)
-    
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="This user does not exist in our database"
+    if user:
+        password_reset_token = create_password_reset_token(
+            user_data={"email": email, "user_uid": str(user.uid)}
         )
         
-    password_reset = password_data.password
-    confirm_password_reset = password_data.confirm_password
-    
-    if password_reset != confirm_password_reset:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The passwords are not the same"
+        reset_link = f"{Config.DOMAIN}/reset-password?token={password_reset_token}"
+        
+        message = create_message(
+            subject="Password Reset Request",
+            recipients=[email],
+            template_body={"reset_link": reset_link, "first_name": user.first_name},
         )
-    
-    # generate new password hash
-    new_password = password_data.password
-    new_password_hash = generate_password_hash(new_password)
-    
-    # Update the user password
-    user.password_hash = new_password_hash
-    
-    await session.commit()
-    await session.refresh(user)
-    
-    return {
-        "message" : "Password reset was successful"
-    }
+        
+        await send_email(background_tasks, message, template_name="reset_password_email.html")
+
+    return templates.TemplateResponse("partials/_alert.html", {
+        "request": request,
+        "message": response_message,
+        "type": "success"
+    })
+
+# |--- Route to reset password ---|
+@auth_router.post("/reset-password", status_code=status.HTTP_200_OK)
+async def reset_password(
+    request: Request,
+    token: str,
+    session: AsyncSession = Depends(get_session),
+    password: str = Form(...),
+    confirm_password: str = Form(...)
+):
+    try:
+        token_data = decode_token(token)
+        if not token_data:
+            raise InvalidTokenError("Invalid or expired password reset token.")
+
+        if password != confirm_password:
+            raise ValidationError("Passwords do not match.")
+
+        user_uid = token_data["user"]["user_uid"]
+        user = await user_service.get_user_by_uid(user_uid, session)
+
+        if not user:
+            raise UserNotFoundError("User not found.")
+
+        new_password_hash = generate_password_hash(password)
+        user.password_hash = new_password_hash
+        await session.commit()
+
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request,
+            "message": 'Password reset successful! You can now <a href="#" data-bs-toggle="modal" data-bs-target="#loginModal" class="alert-link">log in</a>.',
+            "type": "success"
+        })
+    except (InvalidTokenError, ValidationError, UserNotFoundError) as e:
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request,
+            "message": str(e),
+            "type": "danger"
+        })
 
 
 
 # |--- Route to change user password ---|
-@auth_router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
-async def change_password(user_data:PasswordChangeSchema,
-                         current_user: User = Depends(get_current_user),
-                         session: AsyncSession = Depends(get_session)
-                         ):
-    
-    # get the user old and new password
-    old_password = user_data.old_password
-    
-    # check if user old password is correct
-    verification_successful = verify_password(old_password, current_user.password_hash)
-    
-    if not verification_successful:
-        raise InvalidCredentialsError("Invalid Password")
+@auth_router.post("/change-password", status_code=status.HTTP_200_OK)
+async def change_password(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    old_password: str = Form(...),
+    new_password: str = Form(...)
+):
+    try:
+        # check if user old password is correct
+        verification_successful = verify_password(old_password, current_user.password_hash)
         
-    # get new password
-    new_password = user_data.new_password
-    new_password_hash = generate_password_hash(new_password)
-    
-    # update the user_password
-    current_user.password_hash = new_password_hash
-    
-    await session.commit()
-    await session.refresh(current_user)
-    
-    return None
+        if not verification_successful:
+            raise InvalidCredentialsError("The current password you entered is incorrect.")
+            
+        # get new password and hash it
+        new_password_hash = generate_password_hash(new_password)
+        
+        # update the user_password
+        current_user.password_hash = new_password_hash
+        
+        await session.commit()
+        
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request, "message": "Your password has been updated successfully.", "type": "success"
+        })
+    except InvalidCredentialsError as e:
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request, "message": str(e), "type": "danger"
+        })
 
 @auth_router.get("/users/me/downloads", response_model=List[UserDownloadHistoryModel])
 async def get_downloads(current_user : User = Depends(get_current_user),
@@ -286,18 +310,24 @@ async def get_downloads(current_user : User = Depends(get_current_user),
    return await user_service.get_user_download_history(current_user.uid, session, skip, limit)
 
 
-@auth_router.post("/logout", status_code=status.HTTP_200_OK)
+@auth_router.post("/logout")
 async def logout_user(
-    logout_data: LogoutSchema,
-    access_token_data: dict = Depends(AccessTokenBearer())
+    access_token_data: Optional[dict] = Depends(get_validated_token_data)
 ):
     """
-    Logout user by invalidating tokens.
-
-    Invalidates both access and refresh tokens by adding their JTIs to Redis blocklist.
-    The refresh token should be provided in the request body as JSON: {"refresh_token": "..."}
+    Logout user by invalidating access token and clearing the auth cookie.
     """
-    return await user_service.logout_user(
-        access_token_data=access_token_data,
-        refresh_token=logout_data.refresh_token
-    )
+    # Create a response object to manipulate. This avoids conflicts with exception handlers.
+    response = Response()
+
+    if access_token_data:
+        await user_service.logout_user(access_token_data=access_token_data)
+
+    # Clear the cookie
+    response.delete_cookie("access_token")
+
+    # This header tells HTMX to redirect to the home page
+    response.headers["HX-Redirect"] = "/"
+
+    # Return the response with the cookie cleared and redirect header
+    return response

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card text-center shadow-lg">
+                <div class="card-header {% if success %}bg-success text-white{% else %}bg-danger text-white{% endif %}">
+                    <h4 class="mb-0">{{ title }}</h4>
+                </div>
+                <div class="card-body p-4">
+                    {% if success %}
+                        <i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i>
+                    {% else %}
+                        <i class="bi bi-x-circle-fill text-danger" style="font-size: 4rem;"></i>
+                    {% endif %}
+                    <p class="lead mt-3">{{ message|safe }}</p>
+                    <hr>
+                    <a href="/" class="btn btn-primary">Go to Homepage</a>
+                    {% if success %}
+                    <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#loginModal">Login Now</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

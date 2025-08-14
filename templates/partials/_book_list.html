@@ -1,0 +1,20 @@
+{# This partial is designed to be the target of an HTMX request. #}
+{# It receives a 'books' list and renders them as cards. #}
+
+{% for book in books %}
+<div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+    <div class="card h-100 shadow-sm">
+        <a href="/books/{{ book.uid }}" class="text-decoration-none">
+            <img src="{{ book.cover_image or '/static/images/default_cover.png' }}" class="card-img-top" alt="{{ book.title }}" style="height: 300px; object-fit: cover;">
+        </a>
+        <div class="card-body d-flex flex-column">
+            <h5 class="card-title"><a href="/books/{{ book.uid }}" class="text-decoration-none text-dark stretched-link">{{ book.title }}</a></h5>
+            <p class="card-text text-muted">{{ book.author }}</p>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="col">
+    <p class="alert alert-info">No books were found.</p>
+</div>
+{% endfor %}

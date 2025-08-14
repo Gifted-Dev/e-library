@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Our Collection - LightBearers Library{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <h1 class="mb-4 text-center">{{ title }}</h1>
+
+    <!-- Search Form -->
+    <div class="row justify-content-center mb-5">
+        <div class="col-md-8">
+            <input type="search"
+                class="form-control form-control-lg"
+                name="search"
+                placeholder="Search by title or author..."
+                hx-get="/books"
+                hx-trigger="keyup changed delay:500ms, search"
+                hx-target="#book-list-container"
+                hx-swap="innerHTML">
+        </div>
+    </div>
+
+    <!-- Book List Container -->
+    <div id="book-list-container">
+        {% include "partials/_book_list.html" %}
+    </div>
+</div>
+{% endblock %}

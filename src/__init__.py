@@ -9,20 +9,22 @@ from src.config import Config
 from src.core.error_handlers import EXCEPTION_HANDLERS
 from src.core.redis import startup_redis, shutdown_redis
 from src.db.main import init_db
-
+from views import home, auth
+from fastapi.staticfiles import StaticFiles
+import os
 
 version = "v1"
 
 
-@asynccontextmanager
+# @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown events."""
     # Startup
     print("🚀 Starting E-Library application...")
 
     # Initialize database tables
-    print("📊 Initializing database...")
-    await init_db()
+    # print("📊 Initializing database...")
+    # await init_db()
 
     # Initialize Redis connection
     print("🔴 Initializing Redis...")
@@ -37,11 +39,31 @@ async def lifespan(app: FastAPI):
     print("✅ Application shutdown complete!")
 
 
+# main.py
+# ... your existing imports and setup ...
+
+# Placeholder data to mimic a database response
+
+
+
 app = FastAPI(
     title="E-Library API",
     description="A comprehensive e-library management system",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# --- Serve Static Files ---
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+app.mount(
+    "/static",
+    StaticFiles(directory=os.path.join(BASE_DIR, "static")),
+    name="static"
+)
+app.mount(
+    "/uploads",
+    StaticFiles(directory=os.path.join(BASE_DIR, "uploads")),
+    name="uploads"
 )
 
 # Add exception handlers
@@ -66,12 +88,12 @@ app.add_middleware(
 )
 
 
-@app.get("/", include_in_schema=False)
-async def root():
-    """
-    Redirects the root URL to the API documentation.
-    """
-    return RedirectResponse(url="/docs")
+# @app.get("/", include_in_schema=False)
+# async def root():
+#     """
+#     Redirects the root URL to the API documentation.
+#     """
+#     return RedirectResponse(url="/docs")
 
 
 @app.get("/health", include_in_schema=False)
@@ -97,3 +119,5 @@ async def health_check():
 app.include_router(auth_router, prefix=f"/api/{version}/auth", tags=['auth'])
 app.include_router(book_router, prefix=f"/api/{version}/books", tags=['books'])
 app.include_router(admin_router, prefix=f"/api/{version}/admin", tags=['admin'])
+app.include_router(home.router)
+app.include_router(auth.router)

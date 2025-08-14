@@ -1,6 +1,7 @@
-from fastapi import APIRouter, status, Depends, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, status, Depends, UploadFile, File, Form, BackgroundTasks, Request, Response
 from fastapi.exceptions import HTTPException
 from src.core.exceptions import ValidationError
+from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.auth.services import UserService
@@ -8,12 +9,13 @@ from src.db.main import get_session
 from src.auth.utils import create_download_token, decode_token
 from src.books.schemas import BookCreateModel, BookSearchModel, BookUpdateModel, DownloadLogPublicModel
 from src.books.services import BookService
-from src.auth.dependencies import AccessTokenBearer, RoleChecker, ensure_user_is_verified
+from src.auth.dependencies import get_current_user, RoleChecker, ensure_user_is_verified, User
 from src.core.storage import get_storage_service, delete_book_file_from_storage
 from src.core.email import create_message, send_email
 from datetime import datetime
 from typing import Optional, List
 from src.config import Config
+from pathlib import Path
 import os
 from uuid import UUID
 
@@ -27,68 +29,95 @@ admin_checker = RoleChecker(['admin', 'superadmin'], admin_detail)
 user_service = UserService()
 book_service = BookService()
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
 ALLOWED_EXTENSIONS = {".pdf", ".epub", ".mobi"}
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 def is_valid_extension(filename: str) -> bool:
     return os.path.splitext(filename)[1].lower() in ALLOWED_EXTENSIONS
 
+def is_valid_image_extension(filename: str) -> bool:
+    return os.path.splitext(filename)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
+
 
 @book_router.post("/upload", dependencies=[Depends(admin_checker)])
-async def upload_file(title: str = Form(...),
-                      author: str = Form(...),
-                      description: str = Form(...),
-                      session : AsyncSession = Depends(get_session),
-                      token_details: dict = Depends(AccessTokenBearer()),
-                      file: UploadFile = File(...)):
+async def upload_file(request: Request,
+                    title: str = Form(...),
+                    author: str = Form(...),
+                    description: str = Form(...),
+                    session : AsyncSession = Depends(get_session),
+                    current_user: User = Depends(get_current_user),
+                    file: UploadFile = File(...),
+                    cover_image: Optional[UploadFile] = File(None)):
+    try:
+        """
+        Upload a new book file with an optional cover image.
+
+        Only administrators can upload books. Supports PDF, EPUB, and MOBI formats for books,
+        and JPG, JPEG, PNG for cover images.
+        """
+        if not file.filename or not is_valid_extension(file.filename):
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported file format. Only PDF, EPUB, and MOBI are allowed.")
+
+        cover_image_url = None
+        storage_service = get_storage_service()
+        if cover_image and cover_image.filename:
+            if not is_valid_image_extension(cover_image.filename):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Unsupported image format. Only JPG, JPEG, and PNG are allowed."
+                )
+            _, cover_image_url, _ = await storage_service.save_file(cover_image, folder="covers")
+
+        user_id = current_user.uid
+
+        book_data = BookCreateModel(title=title,
+                                    author=author,
+                                    description=description,
+                                    uploaded_by=user_id)
+
+        await book_service.confirm_book_exists(book_data, session)
+
+        _, file_url, file_size = await storage_service.save_file(file)
+
+        await book_service.save_book(book_data=book_data,
+                                    file_url=file_url,
+                                    file_size=file_size,
+                                    cover_image_url=cover_image_url,
+                                    uploaded_by=user_id,
+                                    session=session)
+
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request,
+            "message": f"Book '{book_data.title}' has been successfully uploaded.",
+            "type": "success"
+        })
+    except (HTTPException, ValidationError) as e:
+        detail = e.detail if hasattr(e, 'detail') else str(e)
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request,
+            "message": detail,
+            "type": "danger"
+        })
     
-    """
-    Upload a new book file.
-
-    Only administrators can upload books. Supports PDF, EPUB, and MOBI formats.
-    """
-    if not file.filename or not is_valid_extension(file.filename):
-        raise HTTPException(
-            status_code=400,
-            detail="Unsupported file format. Only PDF, EPUB, and MOBI are allowed.")
-
-    user_id = UUID(token_details.get('user')['user_uid'])
-
-    book_data = BookCreateModel(title=title,
-                                author=author,
-                                description=description,
-                                uploaded_by=user_id)
-
-    await book_service.confirm_book_exists(book_data, session)
-
-    storage_service = get_storage_service()
-    filename, file_url, file_size = await storage_service.save_file(file)
-
-    await book_service.save_book(book_data=book_data,
-                                 file_url=file_url,
-                                 file_size=file_size,
-                                 uploaded_by=user_id,
-                                 session=session)
-
-    return {
-        "message": f"{filename} has been saved",
-        "book_title": book_data.title,
-        "upload_date": str(datetime.now())
-    }
-    
-@book_router.get("/all_books", dependencies=[Depends(role_checker)], response_model=List[BookSearchModel])
+@book_router.get("/all_books", response_model=List[BookSearchModel])
 async def get_all_books(skip: int = 0, limit: int = 20, session: AsyncSession = Depends(get_session)):
     """Get all books with pagination."""
     return await book_service.get_all_books(skip, limit, session)
 
 # |---- Route to search for books ----|
-@book_router.get("/search", dependencies=[Depends(role_checker)], response_model=List[BookSearchModel])
+@book_router.get("/search", response_model=List[BookSearchModel])
 async def search_books(title: Optional[str] = None, author: Optional[str] = None, skip: int = 0, limit: int = 20, session: AsyncSession = Depends(get_session)):
     """Search books by title or author."""
     if not title and not author:
         raise ValidationError("Please provide a title or an author to search.")
     return await book_service.search_book(title, author, skip, limit, session)
 
-@book_router.get("/{book_uid}", dependencies=[Depends(role_checker)], response_model=BookSearchModel)
+@book_router.get("/{book_uid}", response_model=BookSearchModel)
 async def get_book(book_uid: str, session: AsyncSession = Depends(get_session)):
     """Get a specific book by its UUID."""
     return await book_service.get_book(book_uid, session)
@@ -97,51 +126,49 @@ async def get_book(book_uid: str, session: AsyncSession = Depends(get_session)):
 # |---- Route to Download book ----|
 @book_router.post("/{book_uid}/request-download",
                     dependencies=[Depends(role_checker), Depends(ensure_user_is_verified)],
-                    status_code=status.HTTP_202_ACCEPTED)
-async def request_download_link(book_uid: str, background_tasks: BackgroundTasks,
-                        token_details: dict = Depends(AccessTokenBearer()),
+                    status_code=status.HTTP_200_OK)
+async def request_download_link(request: Request, book_uid: str, background_tasks: BackgroundTasks,
+                        current_user: User = Depends(get_current_user),
                         session: AsyncSession = Depends(get_session)):
     
-    # |--- Get the User ID from the AccessTokenBearer() ---|
-    user_uid = token_details.get('user')['user_uid'] 
-    
-    # |---- Get the User Email from Access Token ----|
-    user_email = token_details.get('user')['email']
-    
-    
-    book = await book_service.get_book(book_uid, session)
-    
-    storage_service = get_storage_service()
-    
-    # |--- Confirm if file exists on the server ----|
-    if not book.file_url or not await storage_service.file_exists(book.file_url):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Book file not found on the server"
+    try:
+        user_uid = str(current_user.uid)
+        user_email = current_user.email
+        
+        book = await book_service.get_book(book_uid, session)
+        
+        storage_service = get_storage_service()
+        
+        if not book.file_url or not await storage_service.file_exists(book.file_url):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Book file not found on the server"
+            )
+            
+        await book_service.create_download_record(book_uid, user_uid, session)
+        
+        book_request_token = create_download_token(
+            user_data={"user_uid": user_uid, "email": user_email},
+            book_uid=book_uid
         )
         
-    await book_service.create_download_record(book_uid, user_uid, session)
-    
-    book_request_token = create_download_token(
-        user_data={"user_uid" : user_uid,
-                   "email" : user_email},
-        book_uid=book_uid
-    )
-    
-    # |--- Construct a secure URL with the token as a query parameter ----|
-    download_url = f"{Config.DOMAIN}/books/download?token={book_request_token}"
-    
-    message = create_message(
-        subject=f"Download Link for {book.title}",
-        recipients=[user_email],
-        template_body={"download_url": download_url, "book_title": book.title}
-    )
-    
-    # Using await on send_email directly would block. By adding it as a background task,
-    # we can send the 202 response immediately.
-    await send_email(background_tasks, message, template_name="download_link.html")
+        download_url = f"{Config.DOMAIN}/api/v1/books/download?token={book_request_token}"
         
-    return {"message" : "A download link will be sent to your email shortly"}
+        message = create_message(
+            subject=f"Download Link for {book.title}",
+            recipients=[user_email],
+            template_body={"download_url": download_url, "book_title": book.title, "first_name": current_user.first_name}
+        )
+        
+        await send_email(background_tasks, message, template_name="download_link.html")
+            
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request, "message": "A download link has been sent to your email.", "type": "success"
+        })
+    except HTTPException as e:
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request, "message": e.detail, "type": "danger"
+        })
     
 # |---- Route to download file ----|
 @book_router.get("/download")
@@ -176,21 +203,60 @@ async def download_book(token: str, session: AsyncSession = Depends(get_session)
 
 
 # |------- Route to Update Book ----------|
-@book_router.patch("/{book_uid}/update", response_model=BookSearchModel, dependencies=[Depends(admin_checker)])
-async def update_book(book_uid: str, book_data: BookUpdateModel, session: AsyncSession = Depends(get_session)):
-    # |---- Update Book Using the Book Service -----|
-    book = await book_service.update_book(book_uid, book_data, session)
+@book_router.patch("/{book_uid}/update", dependencies=[Depends(admin_checker)])
+async def update_book(
+    request: Request,
+    book_uid: str,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    title: str = Form(...),
+    author: str = Form(...),
+    description: str = Form(...),
+    cover_image: Optional[UploadFile] = File(None)
+):
+    try:
+        new_cover_image_url = None
+        if cover_image and cover_image.filename:
+            if not is_valid_image_extension(cover_image.filename):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Unsupported image format. Only JPG, JPEG, and PNG are allowed."
+                )
+            storage_service = get_storage_service()
+            _, new_cover_image_url, _ = await storage_service.save_file(cover_image, folder="covers")
 
-    return book
+        book_data = BookUpdateModel(title=title, author=author, description=description)
+        
+        old_cover_to_delete = await book_service.update_book(
+            book_uid, book_data, session, new_cover_image_url=new_cover_image_url
+        )
+
+        if old_cover_to_delete:
+            background_tasks.add_task(delete_book_file_from_storage, old_cover_to_delete)
+
+        return templates.TemplateResponse("partials/_alert.html", {
+            "request": request,
+            "message": f"Book '{book_data.title}' has been successfully updated.",
+            "type": "success"
+        })
+    except (HTTPException, ValidationError) as e:
+        detail = e.detail if hasattr(e, 'detail') else str(e)
+        return templates.TemplateResponse("partials/_alert.html", {"request": request, "message": detail, "type": "danger"})
 
 # |---- Route to delete book ---|
-@book_router.delete("/delete-book/{book_uid}", dependencies=[Depends(admin_checker)], status_code=status.HTTP_204_NO_CONTENT)
-async def delete_book(book_uid:str, background_tasks: BackgroundTasks, session:AsyncSession = Depends(get_session)) -> None:
-    # The service method now returns the file_url directly after deleting the DB record.
-    file_url_to_delete = await book_service.delete_book(book_uid, session)
+@book_router.delete("/delete-book/{book_uid}", dependencies=[Depends(admin_checker)])
+async def delete_book(book_uid:str, background_tasks: BackgroundTasks, session:AsyncSession = Depends(get_session)):
+    # The service method now returns both the book file URL and the cover image URL.
+    file_url_to_delete, cover_image_url_to_delete = await book_service.delete_book(book_uid, session)
 
     # The slow/unreliable part runs in the background after the response has been sent.
     background_tasks.add_task(delete_book_file_from_storage, file_url_to_delete)
+    if cover_image_url_to_delete:
+        background_tasks.add_task(delete_book_file_from_storage, cover_image_url_to_delete)
+
+    response = Response(status_code=status.HTTP_200_OK)
+    response.headers["HX-Redirect"] = "/books"
+    return response
 
 
 # |---- Route to get download logs ---|

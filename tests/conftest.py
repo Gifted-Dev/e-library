@@ -1,32 +1,27 @@
-import pytest
-import asyncio
-from typing import AsyncGenerator
 from httpx import AsyncClient
-from sqlmodel import SQLModel, create_engine
+import os
+import pytest
+from typing import AsyncGenerator
+
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
-from src import app
+from sqlmodel import SQLModel
+
+from src.auth.schemas import UserCreateModel, UserLoginModel
+from src.auth.services import UserService
+from src.db.models import User
 from src.db.main import get_session
-from src.config import Config
-import os
+from src.main import app
 
 # Test database URL
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
 
 # Create test engine
-test_engine = create_async_engine(
-    TEST_DATABASE_URL,
-    echo=True,
-    connect_args={"check_same_thread": False}
-)
+engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 
 # Create test session factory
-TestSessionLocal = sessionmaker(
-    bind=test_engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
+TestSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 @pytest.fixture(scope="session")
 def event_loop():

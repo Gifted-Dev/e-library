@@ -10,11 +10,16 @@ from src.config import Config
 import aiofiles
 import aioboto3
 from botocore.exceptions import ClientError
+from typing import Optional
 
-# Define a base directory for static files. This makes path resolution robust.
-BASE_STATIC_DIR = Path(__file__).parent.parent / "static"
+# Define base directories for the project. This makes path resolution robust.
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+BASE_UPLOADS_DIR = BASE_DIR / "uploads"
 
-async def delete_book_file_from_storage(file_url):
+async def delete_book_file_from_storage(file_url: Optional[str]):
+        if not file_url:
+            return
+
         storage_service = get_storage_service()
         # |---- Delete Book ----|
         # Use the storage abstraction to check for file existence
@@ -31,8 +36,8 @@ async def delete_book_file_from_storage(file_url):
 
 class LocalStorageService:
     async def save_file(self, file: UploadFile, folder="books"):
-        # Ensure the save directory exists within our base static directory.
-        save_dir = BASE_STATIC_DIR / folder
+        # Ensure the save directory exists within our base uploads directory.
+        save_dir = BASE_UPLOADS_DIR / folder
         save_dir.mkdir(parents=True, exist_ok=True)
 
         file_id = str(uuid.uuid4())
@@ -46,14 +51,15 @@ class LocalStorageService:
         async with aiofiles.open(full_path, "wb") as f:
             await f.write(content)
 
-        # Return the original filename for display, and a portable, URL-like relative path for storage.
-        relative_path = f"/{folder}/{unique_filename}".replace("\\", "/")
+        # Return the original filename and a path relative to the project root.
+        # e.g., "uploads/covers/some-file.png"
+        relative_path = f"uploads/{folder}/{unique_filename}".replace("\\", "/")
         return file.filename, relative_path, file_size
 
     def _resolve_path(self, relative_path: str) -> Path:
         """Resolves a relative URL path to an absolute filesystem path."""
-        # Remove leading slash and safely join with the base static directory.
-        return BASE_STATIC_DIR / relative_path.lstrip('/')
+        # Safely join with the base project directory.
+        return BASE_DIR / relative_path
 
     async def file_exists(self, relative_path: str) -> bool:
         full_path = self._resolve_path(relative_path)

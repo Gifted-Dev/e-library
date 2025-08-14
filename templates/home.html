@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!--- Hero Section -->  
+
+
+<div class="container-fluid my-auto px-4 py-5">
+    <div class="row align-items-center justify-content-center g-5">
+        <div class="col-lg-5 offset-lg-1 text-center">
+                <h1 class="display-3 fw-bold">LightBearers Library</h1>
+                <p class="lead fw-bold mb-2">Equipping Believers Through the Power of Reading</p>
+                <p class="text-justify fst-italic">
+                    Sharpen your mind, strengthen your faith, and live out God’s calling through purposeful reading and study
+                </p>
+
+                <form hx-get="/books"
+                    hx-target="#search-results-container"
+                    hx-indicator=".htmx-indicator"
+                    hx-swap="innerHTML"
+                    class="mx-auto" style="max-width: 600px;">
+                    <div class="input-group input-group-lg shadow-sm">
+                        <input type="search"
+                            name="search"
+                            class="form-control form-control-lg py-3"
+                            placeholder="Search for your next great read..."
+                            aria-label="Search"
+                            hx-trigger="keyup changed delay:500ms, search">
+                        <button class="btn btn-primary px-4 d-flex align-items-center justify-content-center" type="submit" aria-label="Submit search">
+                            <span class="spinner-border spinner-border-sm htmx-indicator" role="status" aria-hidden="true"></span>
+                            <span class="search-icon"><i class="bi bi-search fs-5"></i></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        <div class="col-lg-6 d-none d-lg-block">
+            <img src="/static/img/illustration.svg" class="img-fluid" alt="A person reading a book in a library of giant books.">
+        </div>
+    </div>
+
+    <!-- Container for live search results -->
+    <div id="search-results-container" class="mt-5">
+        <!-- Search results will be loaded here by HTMX -->
+    </div>
+</div>
+{% endblock %}

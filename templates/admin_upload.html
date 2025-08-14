@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Book - Admin{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-7">
+            <div class="card shadow-sm">
+                <div class="card-body p-4 p-md-5">
+                    <h2 class="card-title text-center mb-4">Upload a New Book</h2>
+
+                    <div id="upload-response"></div>
+
+                    <form hx-post="/api/v1/books/upload"
+                        hx-encoding="multipart/form-data"
+                        hx-target="#upload-response"
+                        hx-swap="innerHTML"
+                        hx-indicator="#upload-progress"
+                        hx-on="htmx:afterRequest: this.reset()">
+
+                        <div class="mb-3">
+                            <label for="title" class="form-label">Book Title</label>
+                            <input type="text" class="form-control" id="title" name="title" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="author" class="form-label">Author</label>
+                            <input type="text" class="form-control" id="author" name="author" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description</label>
+                            <textarea class="form-control" id="description" name="description" rows="4" required></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="file" class="form-label">Book File (PDF, EPUB, MOBI)</label>
+                            <input class="form-control" type="file" id="file" name="file" accept=".pdf,.epub,.mobi" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="cover_image" class="form-label">Cover Image (Optional)</label>
+                            <input class="form-control" type="file" id="cover_image" name="cover_image" accept="image/png, image/jpeg">
+                        </div>
+
+                        <div id="upload-progress" class="progress mb-3" style="height: 5px; visibility: hidden;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">Upload Book</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,6 +1,6 @@
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.books.schemas import BookCreateModel, BookUpdateModel
-from sqlmodel import select, desc
+from sqlmodel import select, desc, or_
 from src.db.models import Book, Downloads
 from datetime import datetime
 from typing import Optional
@@ -38,7 +38,8 @@ class BookService:
                         file_url: str,
                         file_size: float,
                         uploaded_by: UUID,
-                        session:AsyncSession):
+                        session:AsyncSession,
+                        cover_image_url: Optional[str] = None):
         
         # |--- If book does not exist, save book ---|
         new_book_dict = book_data.model_dump()
@@ -48,6 +49,7 @@ class BookService:
         new_book.uploaded_by = uploaded_by
         new_book.file_size = file_size
         new_book.file_url = file_url
+        new_book.cover_image = cover_image_url
         
         session.add(new_book)
         await session.commit()
@@ -92,13 +94,16 @@ class BookService:
     
     async def search_book(self, title: Optional[str], author: Optional[str], skip, limit, session:AsyncSession):
         # |--- Statement to check which the user search for ---|
-        statement = select(Book)
+        statement = select(Book).order_by(desc(Book.upload_date))
         
+        search_clauses = []
         if title: # if user searches with the title
-            statement = statement.where(Book.title.ilike(f"%{title}%"))
-        
+            search_clauses.append(Book.title.ilike(f"%{title}%"))
         if author: # if user searches with the author name
-            statement = statement.where(Book.author.ilike(f"%{author}%"))
+            search_clauses.append(Book.author.ilike(f"%{author}%"))
+        
+        if search_clauses:
+            statement = statement.where(or_(*search_clauses))
             
         # Apply pagination
         paginated_statement = statement.offset(skip).limit(limit)
@@ -111,10 +116,12 @@ class BookService:
         return books
     
     
-    async def update_book(self, book_uid: str, book_data: BookUpdateModel, session:AsyncSession):
+    async def update_book(self, book_uid: str, book_data: BookUpdateModel, session:AsyncSession, new_cover_image_url: Optional[str] = None) -> Optional[str]:
         # |---- Get the book using the book_uid ---|
         # `get_book` is an async function and must be awaited.
         book = await self.get_book(book_uid, session)
+        
+        old_cover_image_url = book.cover_image
         
         # Use model_dump to get a dictionary of the provided data, excluding unset fields.
         # This ensures we only update the fields the user actually sent.
@@ -122,23 +129,31 @@ class BookService:
 
         for key, value in update_data.items():
             setattr(book, key, value)
+
+        if new_cover_image_url:
+            book.cover_image = new_cover_image_url
         
         session.add(book)
         await session.commit()
         await session.refresh(book)
         
-        return book
+        if new_cover_image_url and old_cover_image_url:
+            return old_cover_image_url
+        return None
         
     
-    async def delete_book(self, book_uid: str, session:AsyncSession) -> str:
+    async def delete_book(self, book_uid: str, session:AsyncSession) -> tuple[Optional[str], Optional[str]]:
         # |---- select book by uid ----|
         book = await self.get_book(book_uid, session)
         
+        file_url = book.file_url
+        cover_image_url = book.cover_image
+
         # |---- Commit Changes ----|
         await session.delete(book)
         await session.commit()
         
-        return book.file_url
+        return file_url, cover_image_url
     
     
     async def create_download_record(self, book_uid: str, user_uid: str, session: AsyncSession):

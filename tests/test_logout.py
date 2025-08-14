@@ -11,193 +11,107 @@ from src.auth.services import UserService
 
 @pytest.mark.asyncio
 class TestLogoutFunctionality:
-    """Test logout API and token invalidation."""
+    """Test HTMX-based logout API and token invalidation."""
 
-    async def test_logout_with_access_token_only(self, client: AsyncClient, authenticated_user: dict):
-        """Test logout with only access token."""
-        headers = {"Authorization": f"Bearer {authenticated_user['access_token']}"}
+    async def test_successful_logout(self, client: AsyncClient, authenticated_user: dict):
+        """
+        Test successful logout via cookie authentication.
+        Should clear the cookie, return a 200 OK, and an HX-Redirect header.
+        """
+        cookies = {"access_token": f"Bearer {authenticated_user['access_token']}"}
         
-        # Mock Redis service
         with patch.object(redis_service, 'is_connected', return_value=True), \
-             patch.object(redis_service, 'add_to_blocklist', return_value=True) as mock_add:
+             patch.object(redis_service, 'add_to_blocklist', return_value=True) as mock_add_to_blocklist:
             
-            response = await client.post("/api/v1/auth/logout", 
-                                       json={}, 
-                                       headers=headers)
+            response = await client.post("/api/v1/auth/logout", cookies=cookies)
             
             assert response.status_code == 200
-            assert response.json()["message"] == "Successfully logged out"
+            assert response.text == ""  # Body should be empty
+            assert response.headers.get("hx-redirect") == "/"
             
-            # Verify token was added to blocklist
-            mock_add.assert_called_once()
+            # Verify the cookie was cleared in the response
+            assert "access_token" in response.cookies
+            assert response.cookies["access_token"] == ""
+            # httpx sets expires to a past date for cleared cookies, checking for a non-future value is robust
+            assert response.cookies.get("access_token").expires <= 0
+            
+            # Verify the access token's JTI was added to the blocklist
+            mock_add_to_blocklist.assert_called_once()
 
-    async def test_logout_with_both_tokens(self, client: AsyncClient, authenticated_user: dict):
-        """Test logout with both access and refresh tokens."""
-        headers = {"Authorization": f"Bearer {authenticated_user['access_token']}"}
-        
-        # Mock Redis service
-        with patch.object(redis_service, 'is_connected', return_value=True), \
-             patch.object(redis_service, 'add_to_blocklist', return_value=True) as mock_add:
-            
-            response = await client.post("/api/v1/auth/logout", 
-                                       json={"refresh_token": authenticated_user['refresh_token']}, 
-                                       headers=headers)
-            
-            assert response.status_code == 200
-            assert response.json()["message"] == "Successfully logged out"
-            
-            # Verify both tokens were added to blocklist
-            assert mock_add.call_count == 2
 
     async def test_logout_without_authentication(self, client: AsyncClient):
-        """Test logout without authentication token."""
-        response = await client.post("/api/v1/auth/logout", json={})
+        """
+        Test logout without an authentication cookie.
+        Should still return 200 OK and attempt to clear the cookie.
+        """
+        response = await client.post("/api/v1/auth/logout")
         
-        assert response.status_code == 403
-        data = response.json()
-        assert "not authenticated" in data["error"]["message"].lower()
+        assert response.status_code == 200
+        assert response.headers.get("hx-redirect") == "/"
+        assert "access_token" in response.cookies
+        assert response.cookies["access_token"] == ""
 
     async def test_logout_with_invalid_token(self, client: AsyncClient):
-        """Test logout with invalid access token."""
-        headers = {"Authorization": "Bearer invalid_token"}
+        """Test logout with an invalid or malformed token in the cookie."""
+        cookies = {"access_token": "Bearer invalid-token"}
         
-        response = await client.post("/api/v1/auth/logout", 
-                                   json={}, 
-                                   headers=headers)
+        response = await client.post("/api/v1/auth/logout", cookies=cookies)
         
         assert response.status_code == 401
         data = response.json()
-        assert "invalid" in data["error"]["message"].lower()
+        assert "invalid or expired token" in data["detail"].lower()
 
     async def test_logout_redis_unavailable(self, client: AsyncClient, authenticated_user: dict):
-        """Test logout when Redis is unavailable."""
-        headers = {"Authorization": f"Bearer {authenticated_user['access_token']}"}
+        """Test logout behavior when the Redis service is down."""
+        cookies = {"access_token": f"Bearer {authenticated_user['access_token']}"}
         
         # Mock Redis as unavailable
         with patch.object(redis_service, 'is_connected', return_value=False):
-            response = await client.post("/api/v1/auth/logout", 
-                                       json={}, 
-                                       headers=headers)
+            response = await client.post("/api/v1/auth/logout", cookies=cookies)
             
             assert response.status_code == 503
             data = response.json()
-            assert "temporarily unavailable" in data["error"]["message"].lower()
+            assert "logout service temporarily unavailable" in data["detail"].lower()
 
-    async def test_token_blocked_after_logout(self, client: AsyncClient, authenticated_user: dict):
-        """Test that tokens are blocked after logout."""
-        headers = {"Authorization": f"Bearer {authenticated_user['access_token']}"}
+    async def test_token_is_blocked_after_logout(self, client: AsyncClient, authenticated_user: dict):
+        """
+        Verify that after a successful logout, the token is blocked and cannot be used
+        to access protected endpoints.
+        """
+        cookies = {"access_token": f"Bearer {authenticated_user['access_token']}"}
         
-        # Mock Redis service
         with patch.object(redis_service, 'is_connected', return_value=True), \
              patch.object(redis_service, 'add_to_blocklist', return_value=True), \
-             patch.object(redis_service, 'is_token_blocked', return_value=False) as mock_blocked:
+             patch.object(redis_service, 'is_token_blocked', return_value=False) as mock_is_blocked:
             
-            # First, logout
-            response = await client.post("/api/v1/auth/logout", 
-                                       json={}, 
-                                       headers=headers)
-            assert response.status_code == 200
+            # 1. Perform logout
+            logout_response = await client.post("/api/v1/auth/logout", cookies=cookies)
+            assert logout_response.status_code == 200
             
-            # Now mock the token as blocked
-            mock_blocked.return_value = True
+            # 2. Mock that the token is now in the blocklist
+            mock_is_blocked.return_value = True
             
-            # Try to access protected endpoint
-            response = await client.get("/api/v1/auth/users/me", headers=headers)
-            assert response.status_code == 401
-            data = response.json()
-            assert "revoked" in data["error"]["message"].lower()
+            # 3. Try to access a protected endpoint with the same (now blocked) token
+            profile_response = await client.get("/api/v1/auth/users/me", cookies=cookies)
+            
+            assert profile_response.status_code == 401
+            data = profile_response.json()
+            assert "token has been revoked" in data["detail"].lower()
 
-    async def test_logout_with_invalid_refresh_token(self, client: AsyncClient, authenticated_user: dict):
-        """Test logout with invalid refresh token."""
-        headers = {"Authorization": f"Bearer {authenticated_user['access_token']}"}
+    async def test_multiple_logouts_with_same_token(self, client: AsyncClient, authenticated_user: dict):
+        """Test that attempting to log out multiple times with the same token is handled gracefully."""
+        cookies = {"access_token": f"Bearer {authenticated_user['access_token']}"}
         
-        # Mock Redis service
-        with patch.object(redis_service, 'is_connected', return_value=True), \
-             patch.object(redis_service, 'add_to_blocklist', return_value=True) as mock_add:
-            
-            response = await client.post("/api/v1/auth/logout", 
-                                       json={"refresh_token": "invalid_refresh_token"}, 
-                                       headers=headers)
-            
-            assert response.status_code == 200
-            assert response.json()["message"] == "Successfully logged out"
-            
-            # Only access token should be added to blocklist (refresh token is invalid)
-            assert mock_add.call_count == 1
-
-    async def test_multiple_logouts_same_token(self, client: AsyncClient, authenticated_user: dict):
-        """Test multiple logout attempts with the same token."""
-        headers = {"Authorization": f"Bearer {authenticated_user['access_token']}"}
-        
-        # Mock Redis service
         with patch.object(redis_service, 'is_connected', return_value=True), \
              patch.object(redis_service, 'add_to_blocklist', return_value=True):
             
             # First logout
-            response1 = await client.post("/api/v1/auth/logout", 
-                                        json={}, 
-                                        headers=headers)
+            response1 = await client.post("/api/v1/auth/logout", cookies=cookies)
             assert response1.status_code == 200
             
-            # Second logout with same token should still work
-            response2 = await client.post("/api/v1/auth/logout", 
-                                        json={}, 
-                                        headers=headers)
+            # Second logout with the same token should still succeed and redirect
+            response2 = await client.post("/api/v1/auth/logout", cookies=cookies)
             assert response2.status_code == 200
-
-    async def test_logout_response_format(self, client: AsyncClient, authenticated_user: dict):
-        """Test logout response format."""
-        headers = {"Authorization": f"Bearer {authenticated_user['access_token']}"}
-        
-        # Mock Redis service
-        with patch.object(redis_service, 'is_connected', return_value=True), \
-             patch.object(redis_service, 'add_to_blocklist', return_value=True):
-            
-            response = await client.post("/api/v1/auth/logout", 
-                                       json={}, 
-                                       headers=headers)
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert "message" in data
-            assert isinstance(data["message"], str)
-            assert data["message"] == "Successfully logged out"
-
-    async def test_logout_with_empty_refresh_token(self, client: AsyncClient, authenticated_user: dict):
-        """Test logout with empty refresh token."""
-        headers = {"Authorization": f"Bearer {authenticated_user['access_token']}"}
-        
-        # Mock Redis service
-        with patch.object(redis_service, 'is_connected', return_value=True), \
-             patch.object(redis_service, 'add_to_blocklist', return_value=True) as mock_add:
-            
-            response = await client.post("/api/v1/auth/logout", 
-                                       json={"refresh_token": ""}, 
-                                       headers=headers)
-            
-            assert response.status_code == 200
-            assert response.json()["message"] == "Successfully logged out"
-            
-            # Only access token should be added to blocklist
-            assert mock_add.call_count == 1
-
-    async def test_logout_with_null_refresh_token(self, client: AsyncClient, authenticated_user: dict):
-        """Test logout with null refresh token."""
-        headers = {"Authorization": f"Bearer {authenticated_user['access_token']}"}
-        
-        # Mock Redis service
-        with patch.object(redis_service, 'is_connected', return_value=True), \
-             patch.object(redis_service, 'add_to_blocklist', return_value=True) as mock_add:
-            
-            response = await client.post("/api/v1/auth/logout", 
-                                       json={"refresh_token": None}, 
-                                       headers=headers)
-            
-            assert response.status_code == 200
-            assert response.json()["message"] == "Successfully logged out"
-            
-            # Only access token should be added to blocklist
-            assert mock_add.call_count == 1
 
 
 @pytest.mark.asyncio

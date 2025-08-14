@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}My Profile - LightBearers Library{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <h1 class="mb-4">My Profile</h1>
+    <div class="row g-4">
+        <!-- Profile Details Column -->
+        <div class="col-lg-5">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Account Details</h5>
+                    <p><strong>Name:</strong> {{ current_user.first_name }} {{ current_user.last_name }}</p>
+                    <p><strong>Email:</strong> {{ current_user.email }}</p>
+                    <p><strong>Member Since:</strong> {{ current_user.created_at.strftime('%B %d, %Y') }}</p>
+                    {% if not current_user.is_verified %}
+                        <div id="verification-alert-wrapper">
+                            <div class="alert alert-warning d-flex justify-content-between align-items-center">
+                                Your email is not verified.
+                                <button hx-post="/api/v1/auth/resend-verification" hx-target="#verification-alert-wrapper" hx-swap="innerHTML" class="btn btn-sm btn-warning">Resend Email</button>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">Change Password</h5>
+                    <div id="password-change-alert"></div>
+                    <form hx-post="/api/v1/auth/change-password" hx-target="#password-change-alert" hx-swap="innerHTML" hx-on="htmx:afterRequest: this.reset()">
+                        <div class="mb-3">
+                            <label for="old_password" class="form-label">Current Password</label>
+                            <input type="password" class="form-control" id="old_password" name="old_password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_password" class="form-label">New Password</label>
+                            <input type="password" class="form-control" id="new_password" name="new_password" minlength="8" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Update Password</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Download History Column -->
+        <div class="col-lg-7">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">My Download History</h5>
+                    {% if download_history %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr><th>Book Title</th><th>Author</th><th>Date</th></tr>
+                                </thead>
+                                <tbody>
+                                    {% for download in download_history %}
+                                    <tr><td><a href="/books/{{ download.book.uid }}" class="link-themed">{{ download.book.title }}</a></td><td>{{ download.book.author }}</td><td>{{ download.timestamp.strftime('%Y-%m-%d') }}</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">You have not downloaded any books yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

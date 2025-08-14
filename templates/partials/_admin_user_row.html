@@ -1,0 +1,21 @@
+<tr id="user-row-{{ user.uid }}">
+    <td>{{ user.first_name }} {{ user.last_name }}</td>
+    <td>{{ user.email }}</td>
+    <td><span class="badge bg-{{ 'success' if user.role == 'admin' else 'secondary' }}">{{ user.role }}</span></td>
+    <td>
+        {% if user.is_verified %}
+            <span class="badge bg-primary">Yes</span>
+        {% else %}
+            <span class="badge bg-warning text-dark">No</span>
+        {% endif %}
+    </td>
+    <td>
+        {% if current_user.role == 'superadmin' %}
+            {% if user.role == 'user' %}
+                <button hx-post="/api/v1/admin/make_admin" hx-vals='{"email": "{{ user.email }}"}' hx-target="#user-row-{{ user.uid }}" hx-swap="outerHTML" class="btn btn-sm btn-success">Make Admin</button>
+            {% elif user.role == 'admin' %}
+                <button hx-post="/api/v1/admin/revoke_admin" hx-vals='{"email": "{{ user.email }}"}' hx-target="#user-row-{{ user.uid }}" hx-swap="outerHTML" class="btn btn-sm btn-danger">Revoke Admin</button>
+            {% endif %}
+        {% endif %}
+    </td>
+</tr>

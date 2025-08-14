@@ -6,12 +6,13 @@
 </head>
 <body style="font-family: sans-serif; text-align: center; color: #333;">
     <div style="padding: 20px; border: 1px solid #ddd; max-width: 600px; margin: auto; border-radius: 8px;">
-        <h2>Your Download Is Ready!</h2>
-        <p>Here is the secure download link for the book: <strong>{{ book_title }}</strong>.</p>
-        <p>This link will expire in 60 minutes.</p>
-        <a href="{{ download_url }}" style="display: inline-block; margin: 20px 0; padding: 12px 25px; background-color: #17a2b8; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">
+        <h2>Hello, {{ first_name }}!</h2>
+        <p>Your download link for the book "<strong>{{ book_title }}</strong>" is ready. Please click the button below to start your download.</p>
+        <p style="font-size: 0.8em; color: #777;">This link is valid for 60 minutes.</p>
+        <a href="{{ download_url }}" style="display: inline-block; margin: 20px 0; padding: 12px 25px; background-color: #215621; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">
             Download Now
         </a>
+        <p style="font-size: 0.8em; color: #777;">If you did not request this download, you can safely ignore this email.</p>
     </div>
 </body>
 </html>

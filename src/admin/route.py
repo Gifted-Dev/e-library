@@ -1,13 +1,15 @@
-from fastapi import APIRouter, Form, Depends, status
+from fastapi import APIRouter, Form, Depends, status, Request
 from fastapi.exceptions import HTTPException
+from fastapi.templating import Jinja2Templates
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
 from src.auth.schemas import UserPublicModel
 from src.auth.services import UserService
 from src.books.services import BookService
 from src.books.schemas import DownloadLogPublicModel
-from src.auth.dependencies import RoleChecker
+from src.auth.dependencies import RoleChecker, get_current_user, User
 from typing import List
+from pathlib import Path
 
 admin_router = APIRouter()
 superadmin_checker = RoleChecker(
@@ -17,9 +19,15 @@ admin_checker = RoleChecker(['admin', 'superadmin'])
 user_service = UserService()
 book_service = BookService()
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-@admin_router.post("/make_admin", dependencies=[Depends(superadmin_checker)], response_model=UserPublicModel)
-async def make_admin(email: str = Form(...), session: AsyncSession = Depends(get_session)):
+
+@admin_router.post("/make_admin", dependencies=[Depends(superadmin_checker)])
+async def make_admin(request: Request,
+                    email: str = Form(...),
+                    session: AsyncSession = Depends(get_session),
+                    current_user: User = Depends(get_current_user)):
     """
     Grant admin privileges to a user.
 
@@ -43,11 +51,16 @@ async def make_admin(email: str = Form(...), session: AsyncSession = Depends(get
     await session.commit()
     await session.refresh(user)
 
-    return user
+    return templates.TemplateResponse("partials/_admin_user_row.html", {
+        "request": request, "user": user, "current_user": current_user
+    })
 
 # |---- API to give revoke access ---|
-@admin_router.post("/revoke_admin", dependencies=[Depends(superadmin_checker)], response_model=UserPublicModel)
-async def revoke_admin(email:str = Form(...), session: AsyncSession = Depends(get_session)):
+@admin_router.post("/revoke_admin", dependencies=[Depends(superadmin_checker)])
+async def revoke_admin(request: Request,
+                       email:str = Form(...),
+                       session: AsyncSession = Depends(get_session),
+                       current_user: User = Depends(get_current_user)):
     # |--- User User_service to revoke user by mail ---|
     user = await user_service.get_user_by_email(email, session)
     
@@ -73,7 +86,9 @@ async def revoke_admin(email:str = Form(...), session: AsyncSession = Depends(ge
     await session.commit()
     await session.refresh(user)
     
-    return user
+    return templates.TemplateResponse("partials/_admin_user_row.html", {
+        "request": request, "user": user, "current_user": current_user
+    })
 
 # |---- API to list all Users ---|
 @admin_router.get("/users", response_model=List[UserPublicModel], dependencies=[Depends(admin_checker)], status_code=status.HTTP_200_OK)
