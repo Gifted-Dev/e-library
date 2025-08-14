@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize database tables
     # print("📊 Initializing database...")
-    # await init_db()
+    await init_db()
 
     # Initialize Redis connection
     print("🔴 Initializing Redis...")
