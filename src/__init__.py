@@ -4,8 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.auth.routes import auth_router
 from src.books.routes import book_router
 from src.admin.route import admin_router
-from fastapi.responses import RedirectResponse
-from src.config import Config
+from src.config import Config, PROJECT_ROOT
 from src.core.error_handlers import EXCEPTION_HANDLERS
 from src.core.redis import startup_redis, shutdown_redis
 from src.db.main import init_db
@@ -24,7 +23,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize database tables
     # print("📊 Initializing database...")
-    await init_db()
+    # await init_db()
 
     # Initialize Redis connection
     print("🔴 Initializing Redis...")
@@ -54,15 +53,14 @@ app = FastAPI(
 )
 
 # --- Serve Static Files ---
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 app.mount(
     "/static",
-    StaticFiles(directory=os.path.join(BASE_DIR, "static")),
+    StaticFiles(directory=PROJECT_ROOT / "static"),
     name="static"
 )
 app.mount(
     "/uploads",
-    StaticFiles(directory=os.path.join(BASE_DIR, "uploads")),
+    StaticFiles(directory=PROJECT_ROOT / "uploads"),
     name="uploads"
 )
 

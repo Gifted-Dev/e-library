@@ -1,6 +1,10 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 # from pydantic import EmailStr, Field
 from typing import List
+from pathlib import Path
+
+# Define the project's root directory. This is the most robust way to handle paths.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     DATABASE_URL : str

@@ -6,15 +6,11 @@ from urllib.parse import urlparse
 import asyncio
 from fastapi import UploadFile, HTTPException, status
 from fastapi.responses import FileResponse, RedirectResponse
-from src.config import Config
+from src.config import Config, PROJECT_ROOT
 import aiofiles
 import aioboto3
 from botocore.exceptions import ClientError
 from typing import Optional
-
-# Define base directories for the project. This makes path resolution robust.
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-BASE_UPLOADS_DIR = BASE_DIR / "uploads"
 
 async def delete_book_file_from_storage(file_url: Optional[str]):
         if not file_url:
@@ -37,7 +33,7 @@ async def delete_book_file_from_storage(file_url: Optional[str]):
 class LocalStorageService:
     async def save_file(self, file: UploadFile, folder="books"):
         # Ensure the save directory exists within our base uploads directory.
-        save_dir = BASE_UPLOADS_DIR / folder
+        save_dir = PROJECT_ROOT / "uploads" / folder
         save_dir.mkdir(parents=True, exist_ok=True)
 
         file_id = str(uuid.uuid4())
@@ -59,7 +55,7 @@ class LocalStorageService:
     def _resolve_path(self, relative_path: str) -> Path:
         """Resolves a relative URL path to an absolute filesystem path."""
         # Safely join with the base project directory.
-        return BASE_DIR / relative_path
+        return PROJECT_ROOT / relative_path
 
     async def file_exists(self, relative_path: str) -> bool:
         full_path = self._resolve_path(relative_path)
