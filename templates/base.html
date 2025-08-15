@@ -151,7 +151,12 @@
 
                         <div class="mb-3">
                             <label for="loginPassword" class="form-label">Password</label>
-                            <input type="password" class="form-control" id="loginPassword" name="loginPassword" />
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="loginPassword" name="loginPassword" required>
+                                <button class="btn btn-outline-secondary password-toggle" type="button" data-target-input="#loginPassword">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
                         </div>
                         <button type="submit" class="btn btn-primary w-100">Log in</button>
                     </form>
@@ -170,6 +175,38 @@
     <script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.min.js" integrity="sha384-7qAoOXltbVP82dhxHAUje59V5r2YsVfBafyUDxEdApLPmcdhBPg1DKg1ERo0BZlK" crossorigin="anonymous"></script>
+
+    <script>
+        // This script handles the show/hide functionality for all password fields
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('.password-toggle').forEach(button => {
+                button.addEventListener('click', function () {
+                    const targetInputId = this.getAttribute('data-target-input');
+                    const passwordInput = document.querySelector(targetInputId);
+                    if (passwordInput) {
+                        // Toggle the input type between 'password' and 'text'
+                        const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                        passwordInput.setAttribute('type', type);
+                        // Toggle the eye icon
+                        this.querySelector('i').classList.toggle('bi-eye');
+                        this.querySelector('i').classList.toggle('bi-eye-slash');
+                    }
+                });
+            });
+
+            // Global handler for HTMX requests that result in a 401 Unauthorized error.
+            // This indicates an expired or invalid token. Instead of showing a raw error,
+            // we trigger the logout flow to gracefully handle session expiration.
+            document.body.addEventListener('htmx:responseError', function(evt) {
+                if (evt.detail.xhr.status === 401) {
+                    // The token is invalid/expired. We programmatically call the logout endpoint.
+                    // The logout endpoint clears the auth cookie and responds with an
+                    // 'HX-Redirect' header, which HTMX will follow, logging the user out.
+                    htmx.ajax('POST', '/api/v1/auth/logout', { target: 'body', swap: 'outerHTML' });
+                }
+            });
+        });
+    </script>
 
     </body>
 </html>

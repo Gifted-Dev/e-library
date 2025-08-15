@@ -74,11 +74,16 @@ for exception_type, handler in EXCEPTION_HANDLERS.items():
 
 # --- CORS Middleware ---
 
+# The frontend developer's local server and a common alternative
+local_origins = [
+    "http://127.0.0.1:49702",
+    "http://localhost:3000",
+]
+
 origins = [
-    "http://127.0.0.1:49702",  # The frontend developer's local server
-    "http://localhost:3000",   # A common local dev server
-    # Add your production frontend URL here when you deploy the frontend
-    # "https://your-production-frontend.com",
+    *local_origins,
+    Config.DOMAIN,  # The production domain of the API itself
+    Config.CLIENT_DOMAIN, # The production domain of a separate frontend client
 ]
 
 app.add_middleware(

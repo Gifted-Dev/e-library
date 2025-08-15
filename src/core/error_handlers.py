@@ -4,7 +4,7 @@ Error handlers for the e-library application.
 
 import logging
 from fastapi import Request, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response, RedirectResponse
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError as PydanticValidationError
@@ -52,10 +52,28 @@ async def elibrary_exception_handler(request: Request, exc: ELibraryException) -
     )
 
 
-async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+async def http_exception_handler(request: Request, exc: HTTPException) -> Response:
     """Handle FastAPI HTTP exceptions."""
     logger.warning(f"HTTPException: {exc.status_code} - {exc.detail}")
-    
+
+    is_htmx_request = "HX-Request" in request.headers
+    accepts_html = "text/html" in request.headers.get("accept", "")
+
+    if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+        # For HTMX requests with an expired session, redirect via a special header.
+        if is_htmx_request:
+            response = Response(status_code=status.HTTP_200_OK)
+            response.delete_cookie("access_token")
+            response.headers["HX-Redirect"] = "/"
+            return response
+        
+        # For regular browser page loads with an expired session,
+        # perform a standard redirect to the homepage to log the user out.
+        if accepts_html:
+            response = RedirectResponse(url="/")
+            response.delete_cookie("access_token")
+            return response
+
     return create_error_response(
         status_code=exc.status_code,
         message=str(exc.detail),

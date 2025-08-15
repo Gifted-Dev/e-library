@@ -53,7 +53,8 @@ async def register_user(
     first_name: str = Form(..., alias="signupFirstName"),
     last_name: str = Form(..., alias="signupLastName"),
     email: str = Form(..., alias="signupEmail"),
-    password: str = Form(..., alias="signupPassword")
+    password: str = Form(..., alias="signupPassword"),
+    confirm_password: str = Form(..., alias="signupConfirmPassword")
 ):
     """
     Register a new user account.
@@ -62,6 +63,9 @@ async def register_user(
     if the email is in the configured superadmin list.
     """
     try:
+        if password != confirm_password:
+            raise ValidationError("Passwords do not match. Please try again.")
+
         user_data = UserCreateModel(
             first_name=first_name, last_name=last_name, email=email, password=password
         )
